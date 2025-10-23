@@ -54,7 +54,6 @@ def discover_article_links_html(config: dict) -> list[str]:
     seen, out = set(), []
 
     def candidate_ok(absu: str) -> bool:
-        # Κανονικοποιηση url + φιλτραρισμα allow/block regex + paywall check
         if not absu or absu in seen:
             print(f"[HTML]   Skipping seen/empty url: {absu}")
             return False
