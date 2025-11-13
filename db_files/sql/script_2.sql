@@ -6,7 +6,7 @@ CREATE TABLE articles (
     content       TEXT,
     source        TEXT NOT NULL,               
     category      TEXT,                        
-    published_at  TIMESTAMPTZ,                 -- news timestamps are timezone’d
+    published_at  TIMESTAMPTZ,                 -- timestamps basei utc 
     language      TEXT,                        
     scraped_at    TIMESTAMPTZ DEFAULT NOW(),   -- otan to eide o scraper
     updated_at    TIMESTAMPTZ DEFAULT NOW(),   -- otan kaname update

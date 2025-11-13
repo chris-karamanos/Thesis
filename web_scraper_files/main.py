@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from rss_scraper import scrape_rss
 from html_scraper import scrape_html
+from db_conn import upsert_articles
+from typing import List, Dict, Iterable
 
 
 def _safe_str(x):
@@ -19,11 +21,11 @@ def _join_categories(val):
 
 def save_articles_txt(articles, out_dir="outputs"):
 
-    #Save all collected articles into a .txt file, one block per article.
+    # Αποθηκευω τα αρθρα σε txt αρχειο 
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     out_path = Path(out_dir) / f"articles.txt"
 
-    # Sort by source then published 
+    # Ταξινομηση πρωτα με source, μετα με published 
     def _sort_key(a):
         return (_safe_str(a.get("source")).lower(),
                 _safe_str(a.get("published")))
@@ -80,14 +82,7 @@ def run_scraper(config_path: str):
 
 if __name__ == "__main__":
     articles = run_scraper("scraper_config.json")
-    
-    print(f"\n {len(articles)} articles collected!\n")
-    for art in articles[:5]:
-        print(f"📌 {art['title']}")
-        print(f"🔗 {art['link']}")
-        print(f"🕒 {art['published']}")
-        print(f"🗂️ {art['category']}")
-        print()
-
-    out_file = save_articles_txt(articles, out_dir="outputs")
-    print(f"📝 Exported TXT: {out_file}")
+    txt_path = save_articles_txt(articles, out_dir="outputs")
+    print(f"Saved articles to {txt_path}")
+    n = upsert_articles(articles)
+    print(f"Upserted {n} articles")

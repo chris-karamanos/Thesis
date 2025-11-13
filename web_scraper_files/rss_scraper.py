@@ -11,18 +11,6 @@ from extractors import (
 
 # RSS SCRAPER
 def scrape_rss(source_name: str, config: dict):
-    """
-    Reads one RSS feed and returns a list of article dicts.
-    Respects:
-      - config['rss_filters']: list[str]  (optional, broad allow-list)
-      - config['caps']:       list[{"labels": [...], "max": int}] (optional, per-group quotas)
-      - config['max_items']:  int (optional, flat cap across all kept items)
-    Requires:
-      - extract_categories(entry): returns raw category labels (list[str])
-      - _norm(s): normalization helper (casefold + accent strip + space collapse)
-      - match_group(entry_categories, caps): returns group index or None
-    """
-   
 
     rss_url    = config["rss"]
     allow_list  = config.get("rss_filters", []) or []
