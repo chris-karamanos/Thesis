@@ -6,6 +6,5 @@ web_scraper_files/__pycache__
 __pycache__/
 *.py[cod]
 .env
-.env.docker
-
+db_files/backups/
 

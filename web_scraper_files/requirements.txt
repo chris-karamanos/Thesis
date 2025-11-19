@@ -1,6 +1,6 @@
 python-dotenv
 langdetect
-psycopg
+psycopg[binary]
 requests
 beautifulsoup4
 playwright
