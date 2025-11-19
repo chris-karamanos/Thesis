@@ -2,5 +2,10 @@ web_scraper_files/__pycache__/extractors.cpython-313.pyc
 web_scraper_files/__pycache__/html_scraper.cpython-313.pyc
 web_scraper_files/__pycache__/rss_scraper.cpython-313.pyc
 web_scraper_files/outputs/articles.txt
-web_scraper_files/.env
-*.pyc
+web_scraper_files/__pycache__
+__pycache__/
+*.py[cod]
+.env
+.env.docker
+
+

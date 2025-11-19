@@ -10,7 +10,6 @@ import psycopg
 from psycopg.rows import dict_row
 
 load_dotenv()
-
 DSN = os.getenv("NEWS_DB_DSN")
 if not DSN:
     raise RuntimeError("NEWS_DB_DSN not set. Check your .env")

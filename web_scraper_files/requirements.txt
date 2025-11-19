@@ -1,0 +1,9 @@
+python-dotenv
+langdetect
+psycopg
+requests
+beautifulsoup4
+playwright
+trafilatura
+readability-lxml
+feedparser

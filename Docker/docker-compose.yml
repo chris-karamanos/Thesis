@@ -1,0 +1,29 @@
+name: thesis
+
+services:
+  db:
+    image: postgres:17
+    container_name: thesis-db
+    env_file:
+      - ../.env.docker 
+    # Εξωτερική πόρτα 5433 -> εσωτερική 5432
+    # ώστε να μην συγκρουστεί με τυχόν local Postgres στο 5432
+    ports:
+      - "5433:5432"
+    volumes:
+      # Μόνιμος χώρος για τα δεδομένα της βάσης
+      - db_data:/var/lib/postgresql/data
+
+  scraper:
+    build: ./web_scraper_files
+    container_name: thesis-scraper
+    depends_on:
+      - db
+    env_file:                                   # Μέσα στο docker network ο host της βάσης είναι db
+      - ../.env 
+    # Προαιρετικό για dev: να βλέπει live τον κώδικα του host
+    volumes:
+      - ./web_scraper_files:/app
+
+volumes:
+  db_data:
