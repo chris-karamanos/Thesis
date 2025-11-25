@@ -25,5 +25,18 @@ services:
     volumes:
       - ../web_scraper_files:/app
 
+
+  server:
+    build:
+      context: ../server_files     # φάκελος όπου είναι το Dockerfile του server
+      dockerfile: Dockerfile
+    container_name: thesis-server
+    depends_on:
+      - db
+    env_file:
+      - ../.env 
+    ports:
+      - "3000:3000"   # host:container → θα τον βλέπεις στο http://localhost:3000    
+
 volumes:
   db_data:
