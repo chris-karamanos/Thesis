@@ -3,6 +3,8 @@ from bs4 import BeautifulSoup
 import re
 from datetime import datetime
 from urllib.parse import urljoin
+from playwright.sync_api import TimeoutError as PwTimeout
+from playwright_stealth import stealth_sync
 
 
 try:
@@ -192,42 +194,93 @@ def is_paywalled(html: str, selectors: list[str] | None, phrases: list[str] | No
     return False   
 
 
-def fetch_dynamic_url(url: str, wait_selector: str = "article", timeout_ms: int = 12000) -> str | None:
-    # Φορτωνω τη σελιδα με Playwright Chromium και αφου φορτωσει η js, παιρνω την html.
-    if not HAVE_PLAYWRIGHT:
-        return None
+
+def fetch_html(url: str, config: dict, *, is_listing: bool = False) -> str | None:
+    """
+    Κάνει πρώτα κανονικό fetch (requests) και αν αποτύχει
+    και είναι ενεργό το use_playwright, δοκιμάζει dynamic fetch.
+    Χρησιμοποιείται τόσο για listing pages όσο και για article pages.
+    """
+    # Static fetch
+    html = fetch_url(url)
+    if html:
+        return html
+
+    # Αν δεν έχουμε HTML, δοκίμασε Playwright 
+    if config.get("use_playwright") == True:
+
+        if HAVE_PLAYWRIGHT:
+            if is_listing:
+                # διαφορετικό default selector για listings
+                wait_sel = config.get("listing_dynamic_wait_selector", "main, .site-main, body")
+            else:
+                wait_sel = config.get("dynamic_wait_selector", "[data-testid='article-body'] p")
+
+            print(f"[DynamicFetch] Trying Playwright for {url} (is_listing={is_listing})")
+            html_dyn = fetch_dynamic_url(url, wait_selector=wait_sel)
+            if html_dyn:
+                print("[DynamicFetch] Playwright fetch successful.")
+                return html_dyn
+            else:
+                print("[DynamicFetch] Playwright returned empty HTML.")
+        else:
+            print("[DynamicFetch] Playwright not available; cannot fetch dynamically.")
+
+    return None
+
+
+
+def fetch_dynamic_url(
+    url: str,
+    wait_selector: str = "article",
+    timeout_ms: int = 20000
+) -> str | None:
+
     try:
-        from playwright.sync_api import sync_playwright, TimeoutError as PwTimeout
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(locale="en-US")
+            browser = p.chromium.launch(
+                headless=False,                # <--- NON-HEADLESS για bypass CF
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-infobars",
+                ]
+            )
+            context = browser.new_context(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                locale="el-GR",
+                viewport={"width": 1280, "height": 900},
+            )
+
             page = context.new_page()
+            stealth_sync(page)  # <-- STEALTH MODE
 
-            # Πηγαινω στη σελιδα και περιμενω να εμφανιστει ο wait-selector μεχρι timeout, τοτε θα εχει φορωθει το κυριο σωμα του αρθρου
-            page.goto(url, wait_until="domcontentloaded")
-            page.wait_for_selector(wait_selector, timeout=timeout_ms)
+            print(f"[DynamicFetch] Opening page (cloudflare bypass mode): {url}")
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
 
-            # Εκτελουμε JS για να ελεγξουμε αν υπαρχει κειμενο με αρκετο μηκος
+            # Προσομοίωση ανθρώπινης κίνησης
+            page.mouse.move(200, 200)
+            page.wait_for_timeout(500)
+            page.mouse.wheel(0, 400)
+            page.wait_for_timeout(500)
+
+            # Προσπάθεια να περάσουμε το Managed Challenge
             try:
-                has_text = page.evaluate("""
-                    (sel) => {
-                        const nodes = Array.from(document.querySelectorAll(sel));
-                        return nodes.some(n => (n.innerText || '').trim().length > 40);
-                    }
-                """, wait_selector)
-                if not has_text:
-                    # περιμενουμε λιγο ακομα μηπως ολοκληρωθει το φορτωμα
-                    page.wait_for_timeout(1500)
-            except Exception:
-                pass
+                page.wait_for_selector(wait_selector, timeout=timeout_ms)
+            except PwTimeout:
+                print(f"[DynamicFetch] WARNING: selector {wait_selector} did not appear, continuing anyway")
 
             html = page.content()
-            context.close()
             browser.close()
             return html
+
     except Exception as e:
-        print(f"[DynamicFetch] Failed for {url}: {e}")
+        print(f"[DynamicFetch] ERROR for {url}: {e}")
         return None
+
     
 
 def extract_bleacherreport_body(html: str) -> str:

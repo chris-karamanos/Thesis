@@ -6,27 +6,40 @@ from extractors import (
     postfilter_text_lines, extract_published_el, is_paywalled,
     extract_bleacherreport_body, REQUEST_SLEEP)
 
-
-
-def _fetch_article_html(url: str, source_name: str, config: dict) -> str | None:
-    # Επιστρεφει την HTML του αρθρου, δυναμικη αν ζητηθει
+def fetch_html(url: str, config: dict, *, is_listing: bool = False) -> str | None:
+    """
+    Κάνει πρώτα κανονικό fetch (requests) και αν αποτύχει
+    και είναι ενεργό το use_playwright, δοκιμάζει dynamic fetch.
+    Χρησιμοποιείται τόσο για listing pages όσο και για article pages.
+    """
+    # Static fetch
     html = fetch_url(url)
-    if not html:
-        return None
+    if html:
+        return html
 
-    # Headless (με ανοιγμα browser στο background)
+    # Αν δεν έχουμε HTML, δοκίμασε Playwright 
     if config.get("use_playwright") == True:
         from extractors import fetch_dynamic_url, HAVE_PLAYWRIGHT
+
         if HAVE_PLAYWRIGHT:
-            # Περιμενω για καποιο selector 
-            wait_sel = config.get("dynamic_wait_selector", "[data-testid='article-body'] p")
+            if is_listing:
+                # διαφορετικό default selector για listings
+                wait_sel = config.get("listing_dynamic_wait_selector", "main, .site-main, body")
+            else:
+                wait_sel = config.get("dynamic_wait_selector", "[data-testid='article-body'] p")
+
+            print(f"[DynamicFetch] Trying Playwright for {url} (is_listing={is_listing})")
             html_dyn = fetch_dynamic_url(url, wait_selector=wait_sel)
             if html_dyn:
                 print("[DynamicFetch] Playwright fetch successful.")
                 return html_dyn
+            else:
+                print("[DynamicFetch] Playwright returned empty HTML.")
         else:
-            print("[DynamicFetch] Playwright not available; using static HTML.")
-    return html
+            print("[DynamicFetch] Playwright not available; cannot fetch dynamically.")
+
+    return None
+
 
 def _url_allowed(url: str, allow_pat: str | None, block_pat: str | None) -> bool:
     if block_pat and re.search(block_pat, url, re.I): return False
@@ -36,7 +49,7 @@ def _url_allowed(url: str, allow_pat: str | None, block_pat: str | None) -> bool
 def _norm_url(base, href):
     return urljoin(base, href) if href else None
 
-def discover_article_links_html(config: dict) -> list[str]:
+def discover_article_links_html(config: dict) -> list[dict]:
     print("[HTML] Discovering article links...")
     listing_urls   = config.get("listing_urls", []) or []
     card_sel       = config.get("card_selector")
@@ -50,8 +63,10 @@ def discover_article_links_html(config: dict) -> list[str]:
     scope_sel      = config.get("listing_scope_selector")
     paywall_sels   = config.get("paywall_selectors", [])
     paywall_phr    = config.get("paywall_phrases", [])
-
-    seen, out = set(), []
+    url_cat_map    = config.get("listing_url_categories", {})
+    
+    seen: set[str] = set()
+    out: list[dict] = []
 
     def candidate_ok(absu: str) -> bool:
         if not absu or absu in seen:
@@ -62,7 +77,10 @@ def discover_article_links_html(config: dict) -> list[str]:
             print(f"[HTML]   URL blocked by allow/block regex: {absu}")
             return False
 
-        # Ελεγχος paywall
+        # Αν δεν έχουμε καθόλου paywall config, μην κάνεις extra fetch
+        if not paywall_sels and not paywall_phr:
+            return True     
+        # Διαφορετικά, κάνε τον κανονικό paywall έλεγχο
         html = fetch_url(absu)
         if not html:
             return False
@@ -70,31 +88,39 @@ def discover_article_links_html(config: dict) -> list[str]:
             print(f"[HTML] paywalled (discovery), skipping: {absu}")
             return False
         return True
+      
+    def try_add_url(absu: str) -> bool:
+        nonlocal taken_here
+        if max_per_list and taken_here >= max_per_list:
+            return False
+        if len(out) >= max_articles:
+            return False
+        if candidate_ok(absu):
+            seen.add(absu)
+            out.append({
+                "url": absu,
+                "category": listing_cat
+                    })
+            taken_here += 1
+            return True
+        return False
     
     for start_url in listing_urls:
         print(f"[HTML] Starting listing URL: {start_url}")
         url, pages = start_url, 0
         taken_here = 0                  #  μετρητης ανα url 
+        listing_cat = url_cat_map.get(start_url, config.get("category", ""))  # κατηγορια για αυτο το listing
 
         while url and pages < max_pages and len(out) < max_articles:
-            html = fetch_url(url)
-            if not html: break
+            html = fetch_html(url, config, is_listing=True)
+            if not html:
+                print(f"[HTML] Failed to fetch listing page: {url}")
+                break
             soup = BeautifulSoup(html, "lxml")
             scope = soup.select_one(scope_sel) if scope_sel else soup
             cards = scope.select(card_sel) if card_sel else scope.find_all("article")
             
             print(f"[HTML] Found {len(cards)} article cards")
-
-            def try_add_url(absu: str) -> bool:
-                nonlocal taken_here
-                if max_per_list and taken_here >= max_per_list:
-                    return False
-                if len(out) >= max_articles:
-                    return False
-                if candidate_ok(absu):
-                    seen.add(absu); out.append(absu); taken_here += 1
-                    return True
-                return False
 
             if not cards:
                 for a in scope.select("a[href]"):
@@ -107,9 +133,9 @@ def discover_article_links_html(config: dict) -> list[str]:
                         break
                     a = card.select_one(link_sel) if link_sel else card.find("a")
                     if not a:
-                        print(f"[HTML]   No link found in card, skipping.")
+                        print(f"[HTML] No link found in card, skipping.")
                         continue
-                    absu = _norm_url(url, a.get("href") if a else None)                    
+                    absu = _norm_url(url, a.get("href") if a else None)                   
                     if try_add_url(absu) and len(out) >= max_articles: break
 
             if max_per_list and taken_here >= max_per_list: break
@@ -166,13 +192,15 @@ def scrape_html(source_name: str, config: dict) -> list[dict]:
 
     want_full = bool(config.get("fetch_full_text", False))
     articles = []
-    for url in urls:
-        html_raw = _fetch_article_html(url, source_name, config)
+    for item in urls:
+        url = item["url"]
+        cat = item.get("category", config.get("category", ""))
+
+        html_raw = fetch_html(url, config, is_listing=False)
         if not html_raw: 
             continue
 
         pub = extract_published_el(html_raw)
-
         meta = extract_meta_from_article_html(html_raw)
         title = meta.get("title") or ""
 
@@ -184,7 +212,7 @@ def scrape_html(source_name: str, config: dict) -> list[dict]:
             "link":      url,
             "published": meta.get("published", ""),
             "source":    source_name,
-            "category":  config["category"],
+            "category":  cat,
             "summary":   meta.get("summary", "") or "",
             "rss_categories": [],
         }

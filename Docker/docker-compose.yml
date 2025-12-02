@@ -25,7 +25,6 @@ services:
     volumes:
       - ../web_scraper_files:/app
 
-
   server:
     build:
       context: ../server_files     # φάκελος όπου είναι το Dockerfile του server

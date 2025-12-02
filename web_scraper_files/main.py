@@ -64,9 +64,12 @@ def save_articles_txt(articles, out_dir="outputs"):
     return str(out_path)
 
 
-def run_scraper(config_path: str):
+def run_scraper(config_path: str, only_sources: list[str] | None = None):
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
+
+    if only_sources is not None:
+        config = {k: v for k, v in config.items() if k in only_sources}
 
     all_articles = []
     for source, cfg in config.items():

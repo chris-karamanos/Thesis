@@ -1,42 +1,58 @@
 {
     "in.gr": {
-        "category": "politics, economy",
-        "rss": "https://www.in.gr/feed/",
-        "method": "rss",
-        "rss_filters": ["Πολιτική", "Ελλάδα", "Υγεία", "Κόσμος", "Οικονομία", "Κυβέρνηση", "Κοινωνία"],
-        "caps": [
-            { "labels": ["Πολιτική", "Ελλάδα", "Κοινωνία"], "max":5},
-            { "labels": ["Οικονομία"],                       "max":5},
-            { "labels": ["Κόσμος", "Υγεία", "Κυβέρνηση"],    "max":2}
+        "category": "Πολιτική, Οικονομία",
+        "method": "html",
+
+        "listing_urls": [
+            "https://www.in.gr/politics/",
+            "https://www.in.gr/economy/"
         ],
-        "rss_exclude": ["Σπορ", "Αθλητικά", "Ποδόσφαιρο", "Μπάσκετ", "Super League", "Euroleague", "Eurovision"],
+
+        "listing_url_categories": {
+        "https://www.in.gr/politics/": "Πολιτική",
+        "https://www.in.gr/economy/": "Οικονομία"
+        },
+
+        "max_pages": 1,
+        "max_articles": 10,
+        "max_per_listing": 5,
+
+        "allow_url_regex": "https?://(?:www\\.)?in\\.gr/\\d{4}/\\d{2}/\\d{2}/(?:politics|economy)/",
+        "block_url_regex": "/tags/|/video/|/live-blog/",
+
         "fetch_full_text": true,
-        "content_root_selector": "article", 
+        "content_root_selector": "article",
         "dom_exclude_selectors": [
-            "div.wrap___headlines",
+            "div.wrap__headlines",
             "ul.trending-col-posts",
             "div.trending-col-posts",
             "div.trending-col",
-            "li.tr_row",                     
-            "div#app",                       
-            "iframe",                        
-            "blockquote.twitter-tweet",    
+            "li.tr_row",
+            "div#app",
+            "iframe",
+            "blockquote.twitter-tweet",
             "script, style, noscript",
             "aside, [role='complementary']",
             ".share, .sharing, .social",
             "[class*='ad-'], .ad, .advert",
             ".related, [class*='related']",
             "nav, header, footer"
-  ]
-    },
+        ]
+ },
+   
     "kathimerini.gr": {
-        "category": "politics, economy",
+        "category": "Πολιτική, Οικονομία",
         "method": "html",
 
         "listing_urls": [
             "https://www.kathimerini.gr/politics/",
             "https://www.kathimerini.gr/economy/"
         ],
+
+        "listing_url_categories": {
+        "https://www.kathimerini.gr/politics/": "Πολιτική",
+        "https://www.kathimerini.gr/economy/": "Οικονομία"
+        },
 
         "max_pages": 3,
         "max_articles": 10,             
@@ -68,45 +84,66 @@
         "paywall_phrases": [
             "ΔΙΑΘΕΣΙΜΟ ΜΕ ΣΥΝΔΡΟΜΗ", "subscription"
         ]
-    },	
+    },
+    	
     "documentonews.gr": {
-	    "category": "politics, economy",
-	    "rss": "https://www.documentonews.gr/feed/",
-	    "method": "rss",
-        "rss_filters": ["Πολιτική", "Κόσμος", "Ελλάδα", "Υγεία", "Οικονομία", "Κυβέρνηση", "Κοινωνία"],
-        "caps": [
-            { "labels": ["Πολιτική", "Ελλάδα", "Κοινωνία"],  "max":5},
-            { "labels": ["Οικονομία"],                       "max":5},
-            { "labels": ["Κόσμος", "Υγεία", "Κυβέρνηση"],    "max":2}
+        "category": "Πολιτική, Οικονομία",
+        "method": "html",
+
+        "listing_urls": [
+            "https://www.documentonews.gr/category/politiki/",
+            "https://www.documentonews.gr/category/oikonomia/"
         ],
-        "rss_exclude": ["Σπορ", "Αθλητικά", "Ποδόσφαιρο", "Μπάσκετ", "Super League", "Euroleague", "Eurovision"],
+
+        "listing_url_categories": {
+        "https://www.documentonews.gr/category/politiki/": "Πολιτική",
+        "https://www.documentonews.gr/category/oikonomia/": "Οικονομία"
+        },
+
+        "use_playwright": true,
+        "listing_dynamic_wait_selector": "article", 
+        "dynamic_wait_selector": "article",        
+        "max_pages": 1,
+        "max_articles": 10,
+        "max_per_listing": 5,
+
+        "listing_scope_selector": "div.post-section",
+        "card_selector": "div.post-section, div.article",
+        "link_selector": "a[href*='/article/']",
+
+        "allow_url_regex": "^https?://(?:www\\.)?documentonews\\.gr/article/",
+        "block_url_regex": "(/live/|/videos?/|/podcast/|/magazine/)",
         "fetch_full_text": true,
-        "content_root_selector": "article",
+        "content_root_selector": "article, #main-content",
         "dom_exclude_selectors": [
-            "div.wrap___headlines",
+            "script, style, noscript",
+            "header, footer, nav, aside",
+            "[class*='share'], .share, .sharing, .social, [aria-label='Share this page']",
+            "[class*='ad-'], .ad, .advert, .advertise, .sponsored, [id*='banner']",
+            "[class*='related'], .related, .recirc, .trending",
+            "figure, figcaption, .gallery, [data-embed], iframe, blockquote.twitter-tweet",
+            "div.wrap__headlines",
             "ul.trending-col-posts",
             "div.trending-col-posts",
             "div.trending-col",
-            "li.tr_row",                     
-            "div#app",                       
-            "iframe",                        
-            "blockquote.twitter-tweet",    
-            "script, style, noscript",
-            "aside, [role='complementary']",
-            ".share, .sharing, .social",
-            "[class*='ad-'], .ad, .advert",
-            ".related, [class*='related']",
-            "nav, header, footer"
-  ]
-    },			
+            "li.tr_row",
+            "div#app"
+        ]
+    },
+
     "news247.gr": {
-        "category": "politics, economy",
+        "category": "Πολιτική, Οικονομία",
         "method": "html",
 
         "listing_urls": [
             "https://www.news247.gr/politiki/",
             "https://www.news247.gr/oikonomia/"
         ],
+
+        "listing_url_categories": {
+        "https://www.news247.gr/politiki/": "Πολιτική",
+        "https://www.news247.gr/oikonomia/": "Οικονομία"
+        },
 
         "max_pages": 2,
         "max_articles": 10,
@@ -131,8 +168,43 @@
             "figure, figcaption, .gallery, [data-embed], iframe, blockquote.twitter-tweet"
   ]
     },
+
+    "naftemporiki.gr": {
+        "category": "politics, economy",          
+        "method": "html",
+
+        "listing_urls": [
+            "https://www.naftemporiki.gr/politics/",
+            "https://www.naftemporiki.gr/finance/"
+        ],
+
+        
+        "listing_url_categories": {
+            "https://www.naftemporiki.gr/politics/": "Πολιτική",
+            "https://www.naftemporiki.gr/finance/":  "Οικονομία"
+        },
+
+        "max_pages": 1,
+        "max_articles": 10,
+        "max_per_listing": 5,
+
+
+        "allow_url_regex": "https?://(?:www\\.)?naftemporiki\\.gr/(politics|finance)/(?:[a-z0-9-]+/)*[0-9]{6,}/",
+        "block_url_regex": "(/tag/|/category/|/search\\?|premium|liveblog)",
+
+        "fetch_full_text": true,
+        "content_root_selector": "main, article",
+        "dom_exclude_selectors": [
+            "header, footer, nav, aside",
+            ".share, .sharing, .social",
+            "[class*='related'], .related",
+            "iframe, script, style, noscript",
+            "blockquote.twitter-tweet"
+        ]
+    },   
+
     "sport24.gr": {
-        "category": "sports",
+        "category": "Αθλητικά",
         "method": "html",
 
         "listing_urls": [
@@ -165,7 +237,7 @@
         ]
     },
     "gazzetta.gr": {
-       "category": "sports",
+       "category": "Αθλητικά",
         "method": "html",
 
         "listing_urls": [
@@ -200,7 +272,7 @@
         ]
     },
     "unboxholics.com": {
-        "category": "gaming",
+        "category": "Gaming",                                       
         "method": "html",
 
         "listing_urls": [
@@ -226,7 +298,7 @@
         ]
     },
     "bbc.com": {
-        "category": "politics",
+        "category": "Πολιτική",
         "rss": "https://feeds.bbci.co.uk/news/world/rss.xml",
         "method": "rss",
         "max_items": 5,
@@ -245,7 +317,7 @@
         ]
     },
     "goal.com": {
-        "category": "sports",
+        "category": "Αθλητικά",
         "method": "html",
 
         "listing_urls": [
@@ -276,44 +348,45 @@
             "figure, figcaption, .gallery, [data-embed], iframe, blockquote.twitter-tweet"
         ]
     },
-"bleacherreport.com": {
-    "category": "sports",
-    "method": "html",
+    "bleacherreport.com": {
+        "category": "Αθλητικά",
+        "method": "html",
 
-    "listing_urls": [
-        "https://bleacherreport.com/nba"
-    ],
+        "listing_urls": [
+            "https://bleacherreport.com/nba"
+        ],
 
-    "max_pages": 2,
-    "max_articles": 5,
+        "max_pages": 2,
+        "max_articles": 5,
 
-    "listing_scope_selector": "main, .page, .stream",
-    "card_selector": "li.stream-article, .streamItem, .atom, .tile, .card, article",
-    "link_selector": "a[href]",
+        "listing_scope_selector": "main, .page, .stream",
+        "card_selector": "li.stream-article, .streamItem, .atom, .tile, .card, article",
+        "link_selector": "a[href]",
 
-    "allow_url_regex": "^https?://(?:www\\.)?bleacherreport\\.com/articles/.*",
-    "block_url_regex": "(/video/|/videos?/|/highlights?|/live-?blog|/live|/stream)",
+        "allow_url_regex": "^https?://(?:www\\.)?bleacherreport\\.com/articles/.*",
+        "block_url_regex": "(/video/|/videos?/|/highlights?|/live-?blog|/live|/stream)",
 
-    "fetch_full_text": true,
+        "fetch_full_text": true,
 
-    "content_root_selector": "[data-testid='article-body']",
-    "dom_exclude_selectors": [
-        "script, style, noscript",
-        "header, footer, nav, aside",
-        "[class*='share'], .share, .social, [aria-label='Share this page']",
-        "[class*='related'], .related, .recirc, .trending, .read-more",
-        "[class*='ad-'], .ad, .advert, .advertisement, .sponsored, [id*='banner']",
-        "figure, figcaption, .gallery, [data-embed], iframe, blockquote.twitter-tweet",
-        ".liveblog, [data-live], [data-component='live']",
-        ".MuiCollapse-root [data-analytics-module-id]",
-        ".MuiCollapse-root [data-testid^='id/article/side_rail/']"
-  ],
+        "content_root_selector": "[data-testid='article-body']",
+        "dom_exclude_selectors": [
+            "script, style, noscript",
+            "header, footer, nav, aside",
+            "[class*='share'], .share, .social, [aria-label='Share this page']",
+            "[class*='related'], .related, .recirc, .trending, .read-more",
+            "[class*='ad-'], .ad, .advert, .advertisement, .sponsored, [id*='banner']",
+            "figure, figcaption, .gallery, [data-embed], iframe, blockquote.twitter-tweet",
+            ".liveblog, [data-live], [data-component='live']",
+            ".MuiCollapse-root [data-analytics-module-id]",
+            ".MuiCollapse-root [data-testid^='id/article/side_rail/']"
+        ],
 
-  "use_playwright": false,
-  "dynamic_wait_selector": ".article-body p, .Article__Body p, article p"
-},
+        "use_playwright": false,
+        "dynamic_wait_selector": ".article-body p, .Article__Body p, article p"
+    },
+
     "ign.com": {
-        "category": "gaming",
+        "category": "Gaming",
         "rss": "https://www.ign.com/rss/articles/feed?tags=games",
         "method": "rss",
         "max_items": 5,

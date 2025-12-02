@@ -7,3 +7,4 @@ playwright
 trafilatura
 readability-lxml
 feedparser
+tf-playwright-stealth
