@@ -67,5 +67,26 @@ SELECT language, COUNT(*) FROM articles GROUP BY language;
 -- Date range sanity
 SELECT MIN(published_at) AS oldest, MAX(published_at) AS newest FROM articles;
 
+-- Indexes on table 'articles'
+SELECT indexname
+FROM pg_indexes
+WHERE schemaname = 'public'
+  AND tablename  = 'articles';
 
 
+-- How many articles have embeddings?
+SELECT 
+    COUNT(*) AS total_articles,
+    COUNT(embedding) AS with_embedding,
+    COUNT(*) - COUNT(embedding) AS without_embedding
+FROM articles;
+
+-- Some article embeddings
+SELECT 
+    id,
+    title,
+    embedding
+FROM articles
+WHERE embedding IS NOT NULL
+ORDER BY id
+LIMIT 5;

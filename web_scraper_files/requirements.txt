@@ -3,8 +3,9 @@ langdetect
 psycopg[binary]
 requests
 beautifulsoup4
-playwright
 trafilatura
 readability-lxml
 feedparser
 tf-playwright-stealth
+pgvector
+sentence-transformers

@@ -5,16 +5,101 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
 from langdetect import detect, DetectorFactory
-
 import psycopg
 from psycopg.rows import dict_row
+from typing import List, Dict, Any
+from sentence_transformers import SentenceTransformer
+import numpy as np
+from pgvector.psycopg import register_vector
 
 load_dotenv()
 DSN = os.getenv("NEWS_DB_DSN")
 if not DSN:
     raise RuntimeError("NEWS_DB_DSN not set. Check your .env")
 
-print("Connecting with DSN:", DSN) 
+print("Connecting with DSN:", DSN)
+
+
+MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+_embedding_model: SentenceTransformer | None = None
+
+
+def get_embedding_model() -> SentenceTransformer:
+    """
+    Φορτώνει το SentenceTransformer μοντέλο μία φορά (lazy singleton)
+    και το επαναχρησιμοποιεί σε όλο το run του scraper.
+    """
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer(MODEL_NAME)
+    return _embedding_model
+
+
+def get_db_conn() -> psycopg.Connection:
+    dsn = os.environ.get("NEWS_DB_DSN")
+    if not dsn:
+        raise RuntimeError("NEWS_DB_DSN is not set")
+
+    conn = psycopg.connect(dsn, autocommit=False)
+    register_vector(conn)  # για να περνάμε Python lists -> pgvector(vector)
+    return conn
+
+
+def build_embedding_text(a: dict, max_chars: int = 1000) -> str:
+    """
+    Φτιάχνει το κείμενο για embedding από ήδη χαρτογραφημένο άρθρο (map_article).
+    Χρησιμοποιεί title + category + πρώτους max_chars από full_text ή summary.
+    """
+    title = a.get("title") or ""
+    category = a.get("category") or ""
+    full_text = a.get("full_text") or ""
+    summary = a.get("summary") or ""
+
+    parts: list[str] = []
+
+    if title:
+        parts.append(title.strip())
+
+    if category:
+        parts.append(f"Κατηγορία: {category.strip()}.")
+
+    body = full_text or summary
+    body = (body or "").strip()
+    if len(body) > max_chars:
+        body = body[:max_chars]
+
+    if body:
+        parts.append(body)
+
+    text = " ".join(parts)
+    if not text:
+        text = "(κενό άρθρο)"
+    return text
+
+
+def compute_article_embeddings(mapped_articles: list[dict]) -> list[list[float]]:
+    """
+    Παίρνει λίστα από mapped articles (όπως γυρνάει το map_article)
+    και επιστρέφει λίστα από embeddings (list[float]) ίδιας σειράς.
+    """
+    model = get_embedding_model()
+
+    texts = [
+        build_embedding_text(a)
+        for a in mapped_articles
+    ]
+
+    embs = model.encode(
+        texts,
+        batch_size=32,
+        show_progress_bar=True,
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+    )
+
+    return [e.tolist() for e in embs]
+
+
 
 # Κανονικοποιηση URLs με αφαιρεση παραμετρων παρακολουθησης
 TRACKING_PREFIXES = ("utm_", "gclid", "fbclid")
@@ -110,9 +195,9 @@ def guess_lang(title: str, content: str) -> str | None:
 
 SQL_UPSERT = """
 INSERT INTO articles
- (title, url, summary, full_text, source, category, published_at, language, scraped_at, updated_at)
+ (title, url, summary, full_text, source, category, published_at, language, scraped_at, updated_at, embedding)
 VALUES
- (%(title)s, %(url)s, %(summary)s, %(full_text)s, %(source)s, %(category)s, %(published_at)s, %(language)s, %(scraped_at)s, %(updated_at)s)
+ (%(title)s, %(url)s, %(summary)s, %(full_text)s, %(source)s, %(category)s, %(published_at)s, %(language)s, %(scraped_at)s, %(updated_at)s, %(embedding)s)
 ON CONFLICT (url) DO UPDATE SET
   title        = EXCLUDED.title,
   summary      = EXCLUDED.summary,
@@ -121,7 +206,8 @@ ON CONFLICT (url) DO UPDATE SET
   category     = EXCLUDED.category,
   published_at = EXCLUDED.published_at,
   language     = EXCLUDED.language,
-  updated_at   = EXCLUDED.updated_at;
+  updated_at   = EXCLUDED.updated_at,
+  embedding    = EXCLUDED.embedding;
 """
 
 
@@ -141,12 +227,60 @@ def map_article(a: dict) -> dict:
         "updated_at":   now,
     }
 
-def upsert_articles(articles: list[dict]) -> int:
+def upsert_articles(
+    conn: psycopg.Connection,
+    articles: List[Dict[str, Any]],
+) -> tuple[int, int, int]:
+    """
+    Παίρνει raw articles από τον scraper, τα περνάει από map_article,
+    υπολογίζει embedding για το καθένα και κάνει upsert στη ΒΔ,
+    χρησιμοποιώντας το SQL_UPSERT (με embedding).
+
+    Επιστρέφει:
+        total   = πόσα άρθρα προσπαθήσαμε να upsert-άρουμε
+        inserts = πόσα ήταν νέα (δεν υπήρχαν πριν)
+        updates = πόσα ήταν ήδη στη βάση
+    """
+
+    # 1. Αν δεν έχουμε άρθρα, επιστρέφουμε μηδενικά
     if not articles:
-        return 0
-    payload = [map_article(a) for a in articles]
-    with psycopg.connect(DSN) as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.executemany(SQL_UPSERT, payload)
-        conn.commit()
-    return len(payload)
+        return 0, 0, 0
+
+    # 2. Χαρτογράφηση με την ΠΑΛΙΑ λογική σου (normalize_url, ensure_utc, guess_lang, κτλ.)
+    mapped_articles: list[dict] = [map_article(a) for a in articles]
+
+    total = len(mapped_articles)
+
+    # 3. Βρίσκουμε ποια URLs υπάρχουν ήδη στη ΒΔ, ώστε να μετρήσουμε inserts/updates
+    urls = [a["url"] for a in mapped_articles]
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT url FROM articles WHERE url = ANY(%s);",
+            (urls,),
+        )
+        existing_urls = {row[0] for row in cur.fetchall()}
+
+    inserts = 0
+    updates = 0
+    for a in mapped_articles:
+        if a["url"] in existing_urls:
+            updates += 1
+        else:
+            inserts += 1
+
+    # 4. Υπολογίζουμε embeddings για ΟΛΑ τα mapped_articles, με σειρά
+    embeddings = compute_article_embeddings(mapped_articles)
+
+    # 5. Δένουμε embedding σε κάθε dict, ώστε να το χρησιμοποιήσει το SQL_UPSERT
+    for a, emb in zip(mapped_articles, embeddings):
+        a["embedding"] = emb  # list[float], ο adapter θα το περάσει ως vector(384)
+
+    # 6. Τρέχουμε το SQL_UPSERT ένα-ένα (named parameters όπως ΠΡΙΝ)
+    with conn.cursor() as cur:
+        for a in mapped_articles:
+            cur.execute(SQL_UPSERT, a)
+
+    conn.commit()
+    return total, inserts, updates
+ 

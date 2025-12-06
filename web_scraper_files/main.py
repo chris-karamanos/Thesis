@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
-from rss_scraper import scrape_rss
-from html_scraper import scrape_html
 from db_conn import upsert_articles
 from typing import List, Dict, Iterable
-
+from rss_scraper import scrape_rss
+from html_scraper import scrape_html
+from db_conn import get_db_conn
 
 def _safe_str(x):
     """Best-effort stringification that tolerates None and non-string types."""
@@ -87,5 +87,6 @@ if __name__ == "__main__":
     articles = run_scraper("scraper_config.json")
     txt_path = save_articles_txt(articles, out_dir="outputs")
     print(f"Saved articles to {txt_path}")
-    n = upsert_articles(articles)
-    print(f"Upserted {n} articles")
+    conn = get_db_conn()
+    total, inserts, updates = upsert_articles(conn, articles)
+    print(f"Upserted {total} articles (new: {inserts}, updated: {updates})")

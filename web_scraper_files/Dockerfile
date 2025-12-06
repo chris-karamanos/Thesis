@@ -1,5 +1,5 @@
 # Βάση: επίσημο Playwright image με Python και browsers εγκατεστημένα
-FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.56.0-jammy
 
 # Λιγότερο "σκουπίδι" και πιο καθαρά logs
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -17,4 +17,4 @@ COPY . .
 
 # 3. Entrypoint του container:
 #    Αν το κύριο script σου ΔΕΝ λέγεται main.py, άλλαξέ το αντίστοιχα.
-CMD ["python", "main.py"]
+CMD ["sleep", "infinity"]

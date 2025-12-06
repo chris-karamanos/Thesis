@@ -239,7 +239,7 @@ def fetch_dynamic_url(
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=False,                # <--- NON-HEADLESS για bypass CF
+                headless=True,                # HEADLESS γιατι μονο ετσι δουλευει σε docker
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--disable-infobars",
