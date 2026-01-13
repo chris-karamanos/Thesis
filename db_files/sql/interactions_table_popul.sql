@@ -3,6 +3,12 @@ ADD COLUMN embedding vector(384);
 
 
 ALTER TABLE interactions
+ADD CONSTRAINT interaction_type_chk
+CHECK (interaction_type IN ('click', 'like', 'share', 'dislike'));
+
+
+INSERT INTO users (username, created_at)
+VALUES ('chriss', now())
 RETURNING id, username;
 
 
