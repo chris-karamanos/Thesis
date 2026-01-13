@@ -150,16 +150,21 @@ GREEK_MONTHS = {
 GREEK_DATE_RE = re.compile(
     r"\b(\d{1,2})\s+"
     r"(Ιανουαρίου|Φεβρουαρίου|Μαρτίου|Απριλίου|Μαΐου|Ιουνίου|Ιουλίου|Αυγούστου|Σεπτεμβρίου|Οκτωβρίου|Νοεμβρίου|Δεκεμβρίου)"
-    r"\s+(\d{4})\s+(\d{2}):(\d{2})"
+    r"\s+(\d{4})\s*(?:-|–|—)?\s*(\d{2}):(\d{2})"
 )
 
 def extract_published_el(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
 
     # Επιστρεφει αν υπαρχει <time datetime="..."> 
-    t = soup.find("time")
-    if t and t.get("datetime"):
-        return t["datetime"]  
+    t = soup.select_one("time[datetime]")
+    if t:
+        return t["datetime"]
+
+    # Τσεκαρε και συχνα meta tags:
+    m = soup.select_one("meta[property='article:published_time'], meta[name='pubdate'], meta[name='publish-date']")
+    if m and m.get("content"):
+        return m["content"]  
 
     # 2) Regex για ελληνικες ημερομηνιες
     txt = soup.get_text(" ", strip=True)

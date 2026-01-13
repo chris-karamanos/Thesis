@@ -1,4 +1,4 @@
-import os
+import os, re
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
@@ -143,6 +143,11 @@ def ensure_utc(dt, naive_policy="assume_utc", naive_tz="Europe/Athens"):
 
     s = str(dt).strip()
 
+    # ISO-8601 με timezone χωρίς ':'
+    m = re.search(r"([+-]\d{2})(\d{2})$", s)
+    if m:
+        s = s[:-5] + f"{m.group(1)}:{m.group(2)}"
+
     # ISO-8601 
     try:
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
@@ -242,16 +247,16 @@ def upsert_articles(
         updates = πόσα ήταν ήδη στη βάση
     """
 
-    # 1. Αν δεν έχουμε άρθρα, επιστρέφουμε μηδενικά
+    # Αν δεν έχουμε άρθρα, επιστρέφουμε μηδενικά
     if not articles:
         return 0, 0, 0
 
-    # 2. Χαρτογράφηση με την ΠΑΛΙΑ λογική σου (normalize_url, ensure_utc, guess_lang, κτλ.)
+    # Χαρτογράφηση με την ΠΑΛΙΑ λογική σου (normalize_url, ensure_utc, guess_lang, κτλ.)
     mapped_articles: list[dict] = [map_article(a) for a in articles]
 
     total = len(mapped_articles)
 
-    # 3. Βρίσκουμε ποια URLs υπάρχουν ήδη στη ΒΔ, ώστε να μετρήσουμε inserts/updates
+    # Βρίσκουμε ποια URLs υπάρχουν ήδη στη ΒΔ, ώστε να μετρήσουμε inserts/updates
     urls = [a["url"] for a in mapped_articles]
 
     with conn.cursor() as cur:
@@ -269,14 +274,14 @@ def upsert_articles(
         else:
             inserts += 1
 
-    # 4. Υπολογίζουμε embeddings για ΟΛΑ τα mapped_articles, με σειρά
+    # Υπολογίζουμε embeddings για ΟΛΑ τα mapped_articles, με σειρά
     embeddings = compute_article_embeddings(mapped_articles)
 
-    # 5. Δένουμε embedding σε κάθε dict, ώστε να το χρησιμοποιήσει το SQL_UPSERT
+    # Δένουμε embedding σε κάθε dict, ώστε να το χρησιμοποιήσει το SQL_UPSERT
     for a, emb in zip(mapped_articles, embeddings):
         a["embedding"] = emb  # list[float], ο adapter θα το περάσει ως vector(384)
 
-    # 6. Τρέχουμε το SQL_UPSERT ένα-ένα (named parameters όπως ΠΡΙΝ)
+    # Τρέχουμε το SQL_UPSERT ένα-ένα (named parameters όπως ΠΡΙΝ)
     with conn.cursor() as cur:
         for a in mapped_articles:
             cur.execute(SQL_UPSERT, a)
