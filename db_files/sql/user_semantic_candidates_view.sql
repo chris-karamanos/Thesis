@@ -1,4 +1,4 @@
-CREATE VIEW user_semantic_candidates AS
+CREATE OR REPLACE VIEW user_semantic_candidates AS
 SELECT
     u.id          AS user_id,
     u.username    AS username,
@@ -21,14 +21,13 @@ JOIN LATERAL (
           WHERE i.user_id = u.id
             AND i.article_id = a.id
       )
-      -- προαιρετικά: μόνο πρόσφατα άρθρα
-      AND a.published_at >= NOW() - INTERVAL '7 days'
+      AND a.published_at >= NOW() - INTERVAL '7 days'   -- πρόσφατα άρθρα
     ORDER BY a.embedding <=> u.embedding   -- μικρότερη απόσταση = πιο σχετικό
-    LIMIT 50                              -- top-200 candidates ανά χρήστη
+    LIMIT 50                             
 ) AS a ON TRUE;
-
 
 
 SELECT *
 FROM user_semantic_candidates
 WHERE user_id = 1
+

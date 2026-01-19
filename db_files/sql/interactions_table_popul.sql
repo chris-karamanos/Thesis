@@ -1,23 +1,20 @@
-ALTER TABLE users
-ADD COLUMN embedding vector(384);
-
-
 ALTER TABLE interactions
 ADD CONSTRAINT interaction_type_chk
 CHECK (interaction_type IN ('click', 'like', 'share', 'dislike'));
 
 
-INSERT INTO users (username, created_at)
-VALUES ('chriss', now())
-RETURNING id, username;
+CREATE INDEX IF NOT EXISTS idx_interactions_user_request
+ON interactions (user_id, request_id, interaction_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_interactions_request_article
+ON interactions (request_id, article_id);
 
 
-SELECT id, title, category, source
-FROM articles
-WHERE source = 'in.gr'
-ORDER BY scraped_at DESC
-LIMIT 10;
-
+ALTER TABLE interactions
+ADD CONSTRAINT fk_interactions_impressions
+FOREIGN KEY (user_id, request_id, article_id)
+REFERENCES impressions (user_id, request_id, article_id)
+ON DELETE CASCADE;
 
 
 INSERT INTO interactions (user_id, article_id, interaction_type)
@@ -35,6 +32,5 @@ VALUES
 	(1, 1329, 'click'),
 	(1, 1289, 'click'),
 	(1, 1289, 'share');
-
 
 

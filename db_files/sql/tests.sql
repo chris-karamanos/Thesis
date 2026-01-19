@@ -91,7 +91,7 @@ WHERE embedding IS NOT NULL
 ORDER BY id
 LIMIT 5;
 
-delete from articles where published_at is null;
+
 SELECT * FROM interactions;
 
 SELECT username, embedding FROM users;
