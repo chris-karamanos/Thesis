@@ -92,11 +92,24 @@ ORDER BY id
 LIMIT 5;
 
 
-SELECT * FROM interactions;
+SELECT count(*) FROM interactions;
+SELECT count(*) FROM impressions;
 
 SELECT username, embedding FROM users;
 
-select *
+select title, image_url
 from articles
-where published_at is not null;
+where image_url is not null;
 
+SELECT COUNT(*) AS articles_never_in_feed
+FROM articles a
+LEFT JOIN impressions i
+  ON i.article_id = a.id
+WHERE i.article_id IS NULL;
+
+SELECT
+  interaction_type,
+  COUNT(*) AS count
+FROM interactions
+GROUP BY interaction_type
+ORDER BY count DESC;

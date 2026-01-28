@@ -75,3 +75,48 @@ CREATE TABLE explanations (
 CREATE INDEX idx_explanations_article ON explanations (article_id);
 
 
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
+ADD COLUMN IF NOT EXISTS embedding_updated_at timestamptz;
+
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_users_set_updated_at ON users;
+
+CREATE TRIGGER trg_users_set_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+
+
+CREATE OR REPLACE FUNCTION set_embedding_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  IF (NEW.embedding IS DISTINCT FROM OLD.embedding) THEN
+    NEW.embedding_updated_at = now();
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_users_set_embedding_updated_at ON users;
+
+CREATE TRIGGER trg_users_set_embedding_updated_at
+BEFORE UPDATE OF embedding ON users
+FOR EACH ROW
+EXECUTE FUNCTION set_embedding_updated_at();
+
+
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS image_url TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_impressions_request_article
+ON impressions(request_id, article_id);
+
+

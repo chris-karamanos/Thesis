@@ -1,0 +1,18 @@
+{
+  "view": "training_dataset",
+  "n_rows": 2122,
+  "n_pos": 765,
+  "n_neg": 1357,
+  "avg_weight": 0.5984919886899152,
+  "feature_cols": [
+    "cosine_similarity",
+    "hours_since_publish",
+    "source",
+    "category"
+  ],
+  "model": "LogisticRegression(liblinear)",
+  "C": 1.0,
+  "min_frequency_onehot": 2,
+  "train_seconds": 0.037708282470703125,
+  "created_at_unix": 1769358586
+}

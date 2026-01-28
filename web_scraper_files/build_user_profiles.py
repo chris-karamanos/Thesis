@@ -4,10 +4,9 @@ from db_conn import get_db_conn  # χρησιμοποιώ την ίδια σύν
 
 # βάρη για τα interaction types
 INTERACTION_WEIGHTS: Dict[str, float] = {
-    "click": 1.0,
-    "like": 2.0,
-    "share": 3.0,
-    "dislike": -2.0,
+    "click": 0.5,
+    "like": 1.0,
+    "dislike": -1.0,
 }
 
 
@@ -30,11 +29,27 @@ def fetch_user_interactions_with_embeddings(conn, user_id: int):
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT a.embedding, i.interaction_type
-            FROM interactions AS i
-            JOIN articles AS a ON a.id = i.article_id
-            WHERE i.user_id = %s
-              AND a.embedding IS NOT NULL;
+            SELECT
+                a.embedding,
+                x.interaction_type
+            FROM (
+                SELECT DISTINCT ON (i.article_id)
+                    i.article_id,
+                    i.interaction_type
+                FROM interactions i
+                WHERE i.user_id = %s
+                AND i.interaction_time >= NOW() - INTERVAL '21 days'
+                ORDER BY
+                    i.article_id,
+                    CASE i.interaction_type
+                        WHEN 'dislike' THEN 3
+                        WHEN 'like'    THEN 2
+                        WHEN 'click'   THEN 1
+                        ELSE 0
+                    END DESC
+            ) x
+            JOIN articles a ON a.id = x.article_id
+            WHERE a.embedding IS NOT NULL;
             """,
             (user_id,),
         )
@@ -67,6 +82,13 @@ def compute_user_embedding(vectors: List[np.ndarray], weights: List[float]) -> n
         return None
 
     w = np.array(weights, dtype=np.float32)
+        
+    NEG_CAP = -3.0                  # cap συνολικού αρνητικού βάρους
+    neg_sum = w[w < 0].sum()
+
+    if neg_sum < NEG_CAP:
+        scale = NEG_CAP / neg_sum   # neg_sum είναι αρνητικό
+        w[w < 0] *= scale
     V = np.stack(vectors, axis=0)  # shape (N, 384)
 
     # weighted sum

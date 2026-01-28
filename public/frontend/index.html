@@ -4,234 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>News Recommender — Dataset Builder UI</title>
-  <style>
-    :root {
-      --bg: #0b1020;
-      --panel: #121a33;
-      --card: #141f3f;
-      --text: #e7eaf3;
-      --muted: #a7b0cc;
-      --border: rgba(255,255,255,0.10);
-      --ok: #2ecc71;
-      --bad: #ff5c5c;
-      --btn: rgba(255,255,255,0.10);
-      --btnHover: rgba(255,255,255,0.18);
-    }
-
-    body {
-      margin: 0;
-      background: radial-gradient(1200px 600px at 20% 0%, rgba(122,162,247,0.22), transparent 60%),
-                  radial-gradient(900px 500px at 90% 10%, rgba(46,204,113,0.14), transparent 55%),
-                  var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      line-height: 1.35;
-    }
-
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      backdrop-filter: blur(8px);
-      background: rgba(11,16,32,0.65);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .topbar {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 14px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-
-    .title {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .title h1 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 0.2px;
-    }
-
-    .title p {
-      margin: 0;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .controls {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .controls label {
-      font-size: 12px;
-      color: var(--muted);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    input[type="number"], input[type="text"] {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid var(--border);
-      color: var(--text);
-      border-radius: 10px;
-      padding: 8px 10px;
-      width: 90px;
-      outline: none;
-    }
-
-    input[type="text"] {
-      width: 240px;
-    }
-
-    button {
-      border: 1px solid var(--border);
-      background: var(--btn);
-      color: var(--text);
-      border-radius: 12px;
-      padding: 9px 12px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: 120ms ease;
-    }
-
-    button:hover { background: var(--btnHover); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    main {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 16px;
-    }
-
-    .meta {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-bottom: 12px;
-      padding: 12px 12px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .meta code {
-      color: var(--text);
-      background: rgba(255,255,255,0.06);
-      padding: 3px 8px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-    }
-
-    .card {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 12px 12px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 10px;
-    }
-
-    .card h2 {
-      margin: 0 0 6px 0;
-      font-size: 15px;
-      font-weight: 750;
-    }
-
-    .desc {
-      margin: 0 0 10px 0;
-      font-size: 13px;
-      color: var(--muted);
-      max-width: 820px;
-    }
-
-    .line {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .badge {
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 4px 8px;
-      background: rgba(255,255,255,0.05);
-      color: var(--text);
-      font-size: 12px;
-    }
-
-    a {
-      color: #9db7ff;
-      text-decoration: none;
-    }
-    a:hover { text-decoration: underline; }
-
-    .actions {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      justify-content: center;
-      min-width: 110px;
-    }
-
-    .btn-like { border-color: rgba(46,204,113,0.35); }
-    .btn-share { border-color: rgba(157,183,255,0.45); }
-    .btn-dislike { border-color: rgba(255,92,92,0.40); }
-
-    .small {
-      font-size: 11px;
-      color: var(--muted);
-      margin-top: 4px;
-      text-align: center;
-    }
-
-    /* Toast */
-    .toast {
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      z-index: 9999;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-width: 420px;
-    }
-    .toast-item {
-      border-radius: 14px;
-      padding: 10px 12px;
-      border: 1px solid var(--border);
-      background: rgba(18,26,51,0.92);
-      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
-      font-size: 13px;
-      color: var(--text);
-    }
-    .toast-ok { border-color: rgba(46,204,113,0.55); }
-    .toast-bad { border-color: rgba(255,92,92,0.55); }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
@@ -239,7 +12,7 @@
     <div class="topbar">
       <div class="title">
         <h1>Dataset Builder UI (Feed + Interactions)</h1>
-        <p>Loads 100 articles, logs impressions, and logs like/share/dislike interactions.</p>
+        <p>Loads articles, logs impressions, and logs like/share/dislike interactions.</p>
       </div>
 
       <div class="controls">
@@ -247,7 +20,7 @@
           user_id
           <input id="userId" type="number" value="1" min="1" step="1" />
         </label>
-        <button id="loadBtn">Load Feed (100)</button>
+        <button id="loadBtn">Load Feed</button>
       </div>
     </div>
   </header>
@@ -263,6 +36,6 @@
   </main>
 
   <div id="toast" class="toast"></div>
-  <script src="index.js"></script>  
+  <script src="./app.js"></script>  
 </body>
 </html>

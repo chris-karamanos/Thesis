@@ -35,7 +35,10 @@ services:
     env_file:
       - ../.env 
     ports:
-      - "3000:3000"   # host:container → θα τον βλέπεις στο http://localhost:3000    
+      - "3000:3000"   # host:container → θα τον βλέπεις στο http://localhost:3000
+    volumes:
+      - ../public:/app    
+
 
 volumes:
   db_data:

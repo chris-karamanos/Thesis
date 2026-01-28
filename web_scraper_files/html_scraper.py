@@ -150,7 +150,7 @@ def discover_article_links_html(config: dict) -> list[dict]:
         print(f"[HTML] Took {taken_here} urls from: {start_url}")
     return out
 
-def extract_meta_from_article_html(html: str) -> dict:
+def extract_meta_from_article_html(html: str, base_url: str | None = None) -> dict:
     soup = BeautifulSoup(html, "lxml")
     meta = {}
     title = (soup.find("meta", property="og:title") or {}).get("content")
@@ -161,6 +161,25 @@ def extract_meta_from_article_html(html: str) -> dict:
         md = soup.find("meta", attrs={"name": "description"})
         if md and md.get("content"):
             desc = md["content"]
+
+    img = None
+    tag = soup.find("meta", property="og:image")
+    if tag and tag.get("content"):
+        img = tag["content"].strip()
+
+    if not img:
+        tag = soup.find("meta", property="og:image:secure_url")
+        if tag and tag.get("content"):
+            img = tag["content"].strip()
+
+    if not img:
+        tag = soup.find("meta", attrs={"name": "twitter:image"})
+        if tag and tag.get("content"):
+            img = tag["content"].strip()
+
+    # Absolute-ize if relative
+    if img and base_url:
+        img = urljoin(base_url, img)        
     
     pub = None
 
@@ -181,7 +200,7 @@ def extract_meta_from_article_html(html: str) -> dict:
                     # ακατεργαστο αν δεν παει με dateutil
                     pub = txt        
             
-    meta.update(title=title, summary=desc, published=pub or "")
+    meta.update(title=title, summary=desc, published=pub or "", image_url=img or "")
     return meta
 
 
@@ -215,6 +234,7 @@ def scrape_html(source_name: str, config: dict) -> list[dict]:
             "category":  cat,
             "summary":   meta.get("summary", "") or "",
             "rss_categories": [],
+            "image_url": meta.get("image_url", "") or "",
         }
         if want_full:
             root_sel = config.get("content_root_selector")

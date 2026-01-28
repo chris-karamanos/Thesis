@@ -76,6 +76,7 @@ def scrape_rss(source_name: str, config: dict):
             "category":  config["category"],     # bucket 
             "rss_categories": entry_categories,  
             "summary":   entry.get("summary", ""),
+            "image_url": extract_rss_image(entry),
         }
 
         want_full = bool(config.get("fetch_full_text", False))
@@ -112,6 +113,9 @@ def scrape_rss(source_name: str, config: dict):
             if all_exhausted:
                 break
 
+        if source_name in ("bbc.com", "ign.com"):
+            print(source_name, "IMG:", extract_rss_image(entry))    
+
     return articles
 
 
@@ -144,5 +148,65 @@ def extract_categories(entry):
         cats.append(entry.get("category"))
     return cats  # ακατεργαστες κατηγοριες
 
+def extract_rss_image(entry) -> str:
+    """
+    Robustly extract a representative image URL from RSS/Atom entries.
+    Supports:
+      - media:content (entry.media_content -> list[dict])
+      - media:thumbnail (entry.media_thumbnail -> list[dict] OR str OR list[str])
+      - enclosures (entry.links with rel=enclosure and type=image/*)
+      - <img> inside summary as a fallback
+    """
+    # 1) media:content (IGN commonly)
+    mc = entry.get("media_content")
+    if mc:
+        # feedparser typically parses this as list of dicts
+        if isinstance(mc, list):
+            for item in mc:
+                if isinstance(item, dict) and item.get("url"):
+                    return item["url"]
+        elif isinstance(mc, dict) and mc.get("url"):
+            return mc["url"]
+
+    # 2) media:thumbnail (BBC commonly; IGN sometimes)
+    mt = entry.get("media_thumbnail")
+    if mt:
+        # BBC: list of dicts with 'url'
+        if isinstance(mt, list):
+            # could be list[dict] or list[str]
+            for item in mt:
+                if isinstance(item, dict) and item.get("url"):
+                    return item["url"]
+                if isinstance(item, str) and item.strip().startswith("http"):
+                    return item.strip()
+        # IGN (sometimes): string
+        if isinstance(mt, str) and mt.strip().startswith("http"):
+            return mt.strip()
+        # dict
+        if isinstance(mt, dict) and mt.get("url"):
+            return mt["url"]
+
+    # 3) enclosures (Atom/RSS)
+    for l in (entry.get("links") or []):
+        if not isinstance(l, dict):
+            continue
+        if l.get("rel") == "enclosure":
+            t = (l.get("type") or "").lower()
+            if t.startswith("image") and l.get("href"):
+                return l["href"]
+
+    # 4) <img> in summary (fallback)
+    summ = entry.get("summary") or ""
+    if "<img" in summ:
+        try:
+            from bs4 import BeautifulSoup
+            s = BeautifulSoup(summ, "lxml")
+            img = s.select_one("img[src]")
+            if img and img.get("src"):
+                return img["src"]
+        except Exception:
+            pass
+
+    return ""
 
 

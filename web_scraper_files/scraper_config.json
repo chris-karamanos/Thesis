@@ -201,7 +201,37 @@
             "iframe, script, style, noscript",
             "blockquote.twitter-tweet"
         ]
-    },   
+    },
+    
+    "capital.gr": {
+        "category": "Πολιτική, Οικονομία",
+        "method": "html",
+        "listing_urls": [
+            "https://www.capital.gr/politiki",
+            "https://www.capital.gr/oikonomia"
+        ],
+        "listing_url_categories": {
+            "https://www.capital.gr/politiki": "Πολιτική",
+            "https://www.capital.gr/oikonomia": "Οικονομία"
+        },
+        "max_pages": 1,
+        "max_articles": 10,
+        "max_per_listing": 5,
+        "allow_url_regex": "^https?://(?:www\\.)?capital\\.gr/(politiki|oikonomia)/\\d+/",
+        "block_url_regex": "/(webtv|forum|auto|health|tech|forbes|bloomberg)/|/tag/|/viewswitcher/|/rss|[?&]mob=|[?&]mobile=",
+        "fetch_full_text": true,
+        "content_root_selector": "#articleBody",
+        "dom_exclude_selectors": [
+            "script, style, noscript",
+            "header, footer, nav, aside",
+            "iframe, blockquote.twitter-tweet",
+            "[class*='share'], .share, .social, .sharing",
+            "[class*='related'], .related, .recirc",
+            "[class*='ad-'], .ad, .advert, .sponsored, [id*='banner']",
+            "[class*='ticker'], .ticker, #ticker"
+        ]
+    },
+
 
     "sport24.gr": {
         "category": "Αθλητικά",
@@ -301,7 +331,7 @@
         "category": "Πολιτική",
         "rss": "https://feeds.bbci.co.uk/news/world/rss.xml",
         "method": "rss",
-        "max_items": 5,
+        "max_items": 10,
         "fetch_full_text": true,
         "content_root_selector": "main#main-content, article", 
         "dom_exclude_selectors": [
@@ -314,6 +344,40 @@
             "[data-component='topic-list']",         
             "[aria-label='Share this page']",
             "[class*='share']", "[class*='related']", "[class*='advert']", ".ad, .advert"
+        ]
+    },
+
+    "apnews.com": {
+        "category": "Πολιτική",
+        "method": "html",
+
+        "listing_urls": [
+            "https://apnews.com/world-news"
+        ],
+        "max_pages": 1,
+        "max_articles": 10,
+
+        "use_playwright": false,
+        "dynamic_wait_selector": "main h1, article h1, main p, article p",
+
+        "listing_scope_selector": "main, #main",
+        "card_selector": "article, section, div",
+        "link_selector": "a[href]",
+        "allow_url_regex": "^https?://(www\\.)?apnews\\.com/article/[^\\s\"']+",
+        "block_url_regex": "(\\/video\\/|\\/videos\\/|\\/live\\/|\\/gallery\\/|\\/galleries\\/|\\/press-release\\/)",
+
+        "fetch_full_text": true,
+        "content_root_selector": "main, article, .RichTextStoryBody",
+
+        "dom_exclude_selectors": [
+            "script, style, noscript",
+            "header, footer, nav, aside",
+            "figure, figcaption",
+            "[aria-label*='Share'], [aria-label*='share']",
+            "[class*='share'], [class*='related']",
+            "[class*='ad'], .ad, .advert, [id*='ad'], [data-testid*='ad']",
+            ".PageListEnhancementGeneric",
+            ".PageList-items"
         ]
     },
     "goal.com": {

@@ -41,7 +41,8 @@ def save_articles_txt(articles, out_dir="outputs"):
             bucket      = _safe_str(a.get("category"))          
             rss_cats    = _join_categories(a.get("rss_categories"))
             summary     = _safe_str(a.get("summary"))
-            full_text   = _safe_str(a.get("full_text"))         
+            full_text   = _safe_str(a.get("full_text"))  
+            image_url   = _safe_str(a.get("image_url"))       
 
             f.write("="*88 + "\n")
             f.write(f"ARTICLE #{i}\n")
@@ -51,6 +52,7 @@ def save_articles_txt(articles, out_dir="outputs"):
             f.write(f"Title       : {title}\n")
             f.write(f"Link        : {link}\n")
             f.write(f"Published   : {published}\n")
+            f.write(f"Image URL   : {image_url}\n")
             if rss_cats:
                 f.write(f"RSS tags    : {rss_cats}\n")
             if summary:

@@ -49,19 +49,24 @@ function renderItems(items) {
   items.forEach((it, idx) => {
     const articleId = it.article_id;
     const title = escapeHTML(it.title || "(no title)");
-    const desc = escapeHTML(it.summary || "");
     const source = escapeHTML(it.source || "—");
     const category = escapeHTML(it.category || "—");
     const published = escapeHTML(formatDate(it.published_at));
     const url = it.url || null;
+    const imageUrl = it.image_url || "";
 
     const card = document.createElement("div");
     card.className = "card";
 
+    const content = document.createElement("div");
+    content.className = "content";
+
+    const text = document.createElement("div");
+    text.className = "text";
+
     const left = document.createElement("div");
     left.innerHTML = `
       <h2>${idx + 1}. ${title}</h2>
-      <p class="desc">${desc || "<span style='opacity:.45'>No summary</span>"}</p>
       <div class="line">
         <span class="badge">${category}</span>
         <span>Source: <strong>${source}</strong></span>
@@ -73,6 +78,26 @@ function renderItems(items) {
         }</span>
       </div>
     `;
+
+    text.appendChild(left);
+    content.appendChild(text); 
+
+    if (imageUrl) {
+      const media = document.createElement("div");
+      media.className = "thumb";
+
+      const img = document.createElement("img");
+      img.src = imageUrl;
+      img.alt = title;
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      img.onerror = () => media.remove();
+
+      media.appendChild(img);
+      content.appendChild(media); // ✅ μετά η εικόνα -> δεξιά
+    } else {
+      content.classList.add("no-thumb");
+    }
 
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -93,7 +118,7 @@ function renderItems(items) {
     actions.appendChild(shareBtn);
     actions.appendChild(dislikeBtn);
 
-    card.appendChild(left);
+    card.appendChild(content);
     card.appendChild(actions);
     grid.appendChild(card);
 
@@ -117,7 +142,7 @@ async function loadFeed() {
 
   try {
     // Your router is mounted at /feed, so GET /feed?user_id=1&k=100 hits router.get("/")
-    const resp = await fetch(`/feed?user_id=${encodeURIComponent(userId)}&k=100`);
+    const resp = await fetch(`/feed?user_id=${encodeURIComponent(userId)}`);
     if (!resp.ok) {
       const t = await resp.text();
       throw new Error(`GET /feed failed: ${resp.status} ${t}`);

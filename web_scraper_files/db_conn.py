@@ -13,11 +13,11 @@ import numpy as np
 from pgvector.psycopg import register_vector
 
 load_dotenv()
-DSN = os.getenv("NEWS_DB_DSN")
+DSN = os.getenv("NEWS_DB_DSN_DOCKER")
 if not DSN:
     raise RuntimeError("NEWS_DB_DSN not set. Check your .env")
 
-print("Connecting with DSN:", DSN)
+print("Connecting with DSN:")
 
 
 MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -36,7 +36,7 @@ def get_embedding_model() -> SentenceTransformer:
 
 
 def get_db_conn() -> psycopg.Connection:
-    dsn = os.environ.get("NEWS_DB_DSN")
+    dsn = os.environ.get("NEWS_DB_DSN_DOCKER")
     if not dsn:
         raise RuntimeError("NEWS_DB_DSN is not set")
 
@@ -200,9 +200,9 @@ def guess_lang(title: str, content: str) -> str | None:
 
 SQL_UPSERT = """
 INSERT INTO articles
- (title, url, summary, full_text, source, category, published_at, language, scraped_at, updated_at, embedding)
+ (title, url, summary, full_text, source, category, published_at, language, scraped_at, updated_at, embedding, image_url)
 VALUES
- (%(title)s, %(url)s, %(summary)s, %(full_text)s, %(source)s, %(category)s, %(published_at)s, %(language)s, %(scraped_at)s, %(updated_at)s, %(embedding)s)
+ (%(title)s, %(url)s, %(summary)s, %(full_text)s, %(source)s, %(category)s, %(published_at)s, %(language)s, %(scraped_at)s, %(updated_at)s, %(embedding)s, %(image_url)s)
 ON CONFLICT (url) DO UPDATE SET
   title        = EXCLUDED.title,
   summary      = EXCLUDED.summary,
@@ -212,7 +212,8 @@ ON CONFLICT (url) DO UPDATE SET
   published_at = EXCLUDED.published_at,
   language     = EXCLUDED.language,
   updated_at   = EXCLUDED.updated_at,
-  embedding    = EXCLUDED.embedding;
+  embedding    = EXCLUDED.embedding,
+  image_url    = EXCLUDED.image_url;
 """
 
 
@@ -230,6 +231,7 @@ def map_article(a: dict) -> dict:
         "language":     guess_lang(a.get("title"), a.get("full_text") or a.get("summary")),
         "scraped_at":   now,
         "updated_at":   now,
+        "image_url":    a.get("image_url"),
     }
 
 def upsert_articles(

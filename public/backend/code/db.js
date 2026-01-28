@@ -2,7 +2,7 @@ const { Pool } = require("pg");
 require("dotenv").config();
 
 const pool = new Pool({
-  connectionString: process.env.NEWS_DB_DSN,
+  connectionString: process.env.NEWS_DB_DSN_DOCKER,
 });
 
 // Optional, για debug

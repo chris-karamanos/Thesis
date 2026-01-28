@@ -8,7 +8,7 @@ const ALLOWED = new Set(["click", "like", "share", "dislike"]);
 
 router.get("/", async (req, res) => {
   const userId = Number(req.query.user_id);
-  const k = Number(req.query.k || 100); 
+  const k = Number(req.query.k || 600); 
 
   if (!Number.isInteger(userId) || userId <= 0) {
     return res.status(400).json({ error: "Invalid user_id" });
@@ -22,11 +22,20 @@ router.get("/", async (req, res) => {
     // 2) Fetch candidates from your view
     const candidatesRes = await pool.query(
       `
-      SELECT article_id, title, source, url, summary, category, published_at, distance
-      FROM user_semantic_candidates_balanced
-      WHERE user_id = $1
-      ORDER BY distance ASC
-      LIMIT $2;
+        SELECT
+          c.article_id,
+          c.title,
+          c.source,
+          c.url,
+          c.category,
+          c.published_at,
+          c.distance,
+          a.image_url
+        FROM user_semantic_candidates_balanced c
+        JOIN articles a ON a.id = c.article_id
+        WHERE c.user_id = $1
+        ORDER BY c.distance ASC
+        LIMIT $2;
       `,
       [userId, k]
     );
@@ -60,7 +69,11 @@ router.get("/", async (req, res) => {
       );
     }
 
-    return res.json({ request_id: requestId, items });
+    return res.json({ request_id: requestId, items, debug: {
+    feed_js: "v_image_url_join_2026-01-23",
+    first_row_keys: Object.keys(candidatesRes.rows[0] || {}),
+    first_row_image_url: candidatesRes.rows[0]?.image_url ?? null
+  } });
   } catch (err) {
     console.error("Error in GET /feed:", err);
     return res.status(500).json({ error: "Internal server error" });
