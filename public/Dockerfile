@@ -1,20 +1,16 @@
 FROM node:20-slim
 
-# Φάκελος εργασίας μέσα στο container
 WORKDIR /app
 
-# Μόνο τα package files για να κάνουμε cache το npm install
+# install deps based on backend/package.json
 COPY backend/package*.json ./backend/
+RUN cd backend && npm install
 
-# Εγκατάσταση dependencies (production)
-RUN cd backend && npm install --only=production
-
-# Αντιγραφή του κώδικα
+# copy source code 
 COPY backend/code ./backend/code
 COPY frontend ./frontend
 
-# Το port που ακούει ο server ΜΕΣΑ στο container
 ENV PORT=3000
+EXPOSE 3000
 
-# Εκκίνηση του server
 CMD ["node", "backend/code/index.js"]

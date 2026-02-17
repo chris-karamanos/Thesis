@@ -29,11 +29,11 @@ HTTP_TIMEOUT = 15
 HTTP_HEADERS = {
     "User-Agent": "NewsAggregator/1.0 (+research; contact: up1072518@ac.upatras.gr)"
 }
-REQUEST_SLEEP = 0.4   # παυση αναμεσα σε αιτηματα
+REQUEST_SLEEP = 0.4   # pause between requests
 
 
 def fetch_url(url: str) -> str | None:
-    # Επιστρεφει την HTML ως string ή None σε αποτυχια 
+    # returns HTML text or None on failure 
     try:
         r = requests.get(url, headers=HTTP_HEADERS, timeout=HTTP_TIMEOUT)
         if r.status_code != 200:
@@ -44,7 +44,7 @@ def fetch_url(url: str) -> str | None:
     
 
 def extract_full_text_generic(html: str, label: str = "") -> str:
-    # εξορυξη κειμενου: trafilatura -> readability -> BS4 heuristic
+    # text extraction with multiple strategies
 
     tag = f" [{label}]" if label else ""
     # Trafilatura
@@ -90,7 +90,7 @@ def extract_full_text_generic(html: str, label: str = "") -> str:
             candidates.extend(found)
 
     if not candidates:
-        # στη χειροτερη περίπτωση, όλο το doc
+        # worst case fallback: take all <p> in the page
         candidates = [soup] 
         ps = soup.find_all("p")
         text = "\n".join(p.get_text(" ", strip=True) for p in ps).strip()
@@ -98,7 +98,7 @@ def extract_full_text_generic(html: str, label: str = "") -> str:
         return text
 
     def score(node):
-        # συναρτηση βαθμολογιας οπου τιμωρουμε κομβους με πολλα script/aside/nav/footer/form
+        # penalty for nodes with many scripts/asides/navs/forms
         text = node.get_text(" ", strip=True)
         penalty = 50 * len(node.find_all(["script", "aside", "nav", "footer", "form"]))
         return len(text) - penalty
@@ -115,7 +115,7 @@ def clean_dom_in_root(html: str, root_sel: str | None, exclude_sels: list[str]) 
     if root is None:
         root = soup  
 
-    # Αφαιρουμε ανεπιθυμητα στοιχεια
+    # remove unwanted elements 
     for sel in exclude_sels or []:
         for tag in root.select(sel):
             tag.decompose()
@@ -127,14 +127,14 @@ def postfilter_text_lines(text: str) -> str:
     lines = [ln.strip() for ln in text.splitlines()]
     keep = []
     for ln in lines:
-        # πέτα embeds/links
+        # remove embeds/links
         if re.search(r"(twitter\.com|pic\.twitter\.com|instagram\.com|youtu(\.be|be\.com))", ln, re.I):
             continue
         if re.search(r"https?://", ln, re.I):
-            # γραμμή που είναι σχεδόν μόνο link
+            # remove links
             if len(ln) < 80:
                 continue
-        # για bullets
+        # remove short lines that are likely noise
         if len(ln) <= 3:
             continue
         keep.append(ln)
@@ -169,17 +169,17 @@ GREEK_DATE_RE = re.compile(
 def extract_published_el(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
 
-    # Επιστρεφει αν υπαρχει <time datetime="..."> 
+    # returns if <time datetime="..."> exists 
     t = soup.select_one("time[datetime]")
     if t:
         return t["datetime"]
 
-    # Τσεκαρε και συχνα meta tags:
+    # check for meta tags:
     m = soup.select_one("meta[property='article:published_time'], meta[name='pubdate'], meta[name='publish-date']")
     if m and m.get("content"):
         return m["content"]  
 
-    # 2) Regex για ελληνικες ημερομηνιες
+    # regex for greek dates
     txt = soup.get_text(" ", strip=True)
     m = GREEK_DATE_RE.search(txt)
 
@@ -188,7 +188,7 @@ def extract_published_el(html: str) -> str:
         month = GREEK_MONTHS.get(mon_gr)
         try:
             dt = datetime(int(year), int(month), int(day), int(hh), int(mm))
-            return dt.isoformat()  # πχ "2025-10-14T13:42:00"
+            return dt.isoformat()  # ISO format for consistency
         except Exception:
             pass
 
@@ -197,12 +197,11 @@ def extract_published_el(html: str) -> str:
 
 def is_paywalled(html: str, selectors: list[str] | None, phrases: list[str] | None) -> bool:
     soup = BeautifulSoup(html, "lxml")
-    # δομη DOM 
+    # DOM 
     for sel in selectors or []:
         if soup.select_one(sel):
             print(f"[PAY] paywall detected by selector: {sel}")
             return True
-    # ψαξιμο για φρασεις
     if phrases:
         txt = soup.get_text(" ", strip=True)
         for p in phrases:
@@ -215,21 +214,19 @@ def is_paywalled(html: str, selectors: list[str] | None, phrases: list[str] | No
 
 def fetch_html(url: str, config: dict, *, is_listing: bool = False) -> str | None:
     """
-    Κάνει πρώτα κανονικό fetch (requests) και αν αποτύχει
-    και είναι ενεργό το use_playwright, δοκιμάζει dynamic fetch.
-    Χρησιμοποιείται τόσο για listing pages όσο και για article pages.
+    Fetches HTML content for a given URL using static requests first and optionally Playwright for dynamic content
     """
     # Static fetch
     html = fetch_url(url)
     if html:
         return html
 
-    # Αν δεν έχουμε HTML, δοκίμασε Playwright 
+    # If not HTML, try playwright 
     if config.get("use_playwright") == True:
 
         if HAVE_PLAYWRIGHT:
             if is_listing:
-                # διαφορετικό default selector για listings
+                # different default selector for listings
                 wait_sel = config.get("listing_dynamic_wait_selector", "main, .site-main, body")
             else:
                 wait_sel = config.get("dynamic_wait_selector", "[data-testid='article-body'] p")
@@ -257,13 +254,13 @@ def fetch_dynamic_url(
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(
-                headless=True,                # HEADLESS γιατι μονο ετσι δουλευει σε docker
+                headless=True,                # HEADLESS only way it works in Docker
                 args=[
                     "--disable-blink-features=AutomationControlled",
                     "--disable-infobars",
                 ]
             )
-            context = browser.new_context(
+            context = browser.new_context(              # simulate typical user environment
                 user_agent=(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -274,18 +271,18 @@ def fetch_dynamic_url(
             )
 
             page = context.new_page()
-            stealth_sync(page)  # <-- STEALTH MODE
+            stealth_sync(page)  # stealth mode
 
             print(f"[DynamicFetch] Opening page (cloudflare bypass mode): {url}")
             page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
 
-            # Προσομοίωση ανθρώπινης κίνησης
+            # simulating user interaction to trigger lazy loading and bypass anti-bot
             page.mouse.move(200, 200)
             page.wait_for_timeout(500)
             page.mouse.wheel(0, 400)
             page.wait_for_timeout(500)
 
-            # Προσπάθεια να περάσουμε το Managed Challenge
+            # effort to bypass simple anti-bot checks by waiting for a key selector to appear
             try:
                 page.wait_for_selector(wait_selector, timeout=timeout_ms)
             except PwTimeout:
@@ -305,7 +302,7 @@ def extract_bleacherreport_body(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     root = soup.select_one("[data-testid='article-body']") or soup
 
-    # Διωχνω right-rail + pinned video + recommendations
+    # remove right-rail, pinned video, recommendations
     killers = [
         "[data-analytics-module-id='side_rail']",
         "[id^='id/article/side_rail']",

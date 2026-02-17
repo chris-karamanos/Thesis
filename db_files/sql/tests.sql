@@ -92,7 +92,7 @@ ORDER BY id
 LIMIT 5;
 
 
-SELECT count(*) FROM interactions;
+SELECT count(*) FROM interactions where user_id=7;
 SELECT count(*) FROM impressions;
 
 SELECT username, embedding FROM users;
@@ -113,3 +113,19 @@ SELECT
 FROM interactions
 GROUP BY interaction_type
 ORDER BY count DESC;
+
+
+SELECT
+  a.category,
+  COUNT(*) FILTER (WHERE i.interaction_type = 'like')    AS likes,
+  COUNT(*) FILTER (WHERE i.interaction_type = 'dislike') AS dislikes
+FROM interactions i
+JOIN articles a
+  ON a.id = i.article_id
+WHERE i.user_id = 1
+  AND i.interaction_type IN ('like', 'dislike')
+GROUP BY a.category
+ORDER BY a.category;
+
+
+select * from interactions where interaction_type ='share' and user_id=1;

@@ -11,4 +11,9 @@ server_files/package.json
 server_files/package-lock.json
 server_files/node_modules/
 server_files/.env
-
+ranking_service/package.json
+ranking_service/package-lock.json
+ranking_service/node_modules/
+public/backend/node_modules/
+public/backend/package.json
+public/backend/package-lock.json

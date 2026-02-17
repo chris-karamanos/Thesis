@@ -120,3 +120,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_impressions_request_article
 ON impressions(request_id, article_id);
 
 
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email text,
+  ADD COLUMN IF NOT EXISTS password_hash text,
+  ADD COLUMN IF NOT EXISTS last_login_at timestamptz;
+
+--  Unique constraints (ώστε να μην υπάρχουν διπλότυπα)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_username_unique'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_username_unique UNIQUE (username);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'users_email_unique'
+  ) THEN
+    ALTER TABLE users ADD CONSTRAINT users_email_unique UNIQUE (email);
+  END IF;
+END $$;
+
+
+CREATE TABLE IF NOT EXISTS "session" (
+  "sid" varchar NOT NULL COLLATE "default",
+  "sess" json NOT NULL,
+  "expire" timestamp(6) NOT NULL
+);
+
+ALTER TABLE "session" ADD CONSTRAINT "session_pkey" PRIMARY KEY ("sid");
+
+CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire");
+
+
+UPDATE users
+SET password_hash = '$2b$12$ontID47.CXEvAgKFGmt/5.fXRPpiEGvBFULRyH3JRfZVeGbI1A.62',
+    updated_at = NOW()
+WHERE username = 'chriss';
+
+ALTER TABLE users
+ALTER COLUMN password_hash SET NOT NULL;
+

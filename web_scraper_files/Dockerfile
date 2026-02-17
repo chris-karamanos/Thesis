@@ -1,20 +1,19 @@
-# Βάση: επίσημο Playwright image με Python και browsers εγκατεστημένα
+# playwright image with Python 3.12 and Ubuntu Jammy (22.04)
 FROM mcr.microsoft.com/playwright/python:v1.56.0-jammy
 
-# Λιγότερο "σκουπίδι" και πιο καθαρά logs
+# cleaner logs
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Φάκελος εργασίας μέσα στο container
+# working directory inside the container
 WORKDIR /app
 
-# 1. Περνάμε τα requirements και τα εγκαθιστούμε
+# copy and install dependencies first
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Περνάμε ΟΛΟ τον κώδικα του scraper
+# copy the rest of the code
 COPY . .
 
-# 3. Entrypoint του container:
-#    Αν το κύριο script σου ΔΕΝ λέγεται main.py, άλλαξέ το αντίστοιχα.
+# sleep infinity because it's meant to run only occasionally and we want to keep the container alive for debugging
 CMD ["sleep", "infinity"]

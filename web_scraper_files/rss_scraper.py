@@ -18,18 +18,18 @@ def scrape_rss(source_name: str, config: dict):
     caps        = config.get("caps", []) or []
     max_items   = int(config.get("max_items", 0) or 0)   
 
-    # Κανονικοποιηση λιστων φιλτρων
+    # normalized lists for efficient substring checks
     allow_norm = [_norm(x) for x in allow_list]
 
     block_norm = [_norm(x) for x in block_list]
 
-    # Μετρηση ανα κατηγορια
+    # counters for group caps
     group_counts = [0] * len(caps)
 
     feed = feedparser.parse(rss_url)
     entries = list(feed.entries)
 
-    # Ταξινομηση κατα χρονολογιας (νεοτερα πρωτα)
+    # sort by published date (newest first)
     def _pubkey(e):
         return getattr(e, "published_parsed", None) or 0
     try:
@@ -45,19 +45,18 @@ def scrape_rss(source_name: str, config: dict):
         title = (entry.get("title") or "").strip()
         url   = entry.get("link")
 
-        # τραβαω τις κατηγοριες 
-        entry_categories = extract_categories(entry)          # ακατεργαστες
-        ecs_norm = [_norm(c) for c in entry_categories]       # κανονικοποιημενες
+        # extract and normalize categories for filtering and grouping 
+        entry_categories = extract_categories(entry)          
+        ecs_norm = [_norm(c) for c in entry_categories]       
 
-        # πεταω αν ταιριαζει με block-list
+        
         if block_norm and any(any(b in c for c in ecs_norm) for b in block_norm):
             continue
 
-        # κραταω μονο αν ταιριαζει με allow-list 
         if allow_norm and not any(any(d in c for c in ecs_norm) for d in allow_norm):
             continue
 
-        # ορια για καθε group  
+        # cap group matching and quota check  
         gi = match_group(entry_categories, caps) if caps else None
 
         if caps:
@@ -67,13 +66,13 @@ def scrape_rss(source_name: str, config: dict):
             if quota and group_counts[gi] >= quota:
                 continue
 
-        # χτιζω το αρθρο
+        # build article
         art = {
             "title":     entry.get("title"),
             "link":      entry.get("link"),
             "published": entry.get("published", ""),
             "source":    source_name,
-            "category":  config["category"],     # bucket 
+            "category":  config["category"],     
             "rss_categories": entry_categories,  
             "summary":   entry.get("summary", ""),
             "image_url": extract_rss_image(entry),
@@ -94,7 +93,7 @@ def scrape_rss(source_name: str, config: dict):
 
         articles.append(art)
 
-        # ενημερωση μετρητων 
+        # update group count if caps are used 
         if caps and gi is not None:
             group_counts[gi] += 1
 
@@ -102,7 +101,7 @@ def scrape_rss(source_name: str, config: dict):
         if max_items and kept_total >= max_items:
             break
 
-        # στοπ αν εχουν εξαντληθει ολα τα ορια των group 
+        # stop if all caps groups are exhausted 
         if caps:
             all_exhausted = True
             for idx, g in enumerate(caps):
@@ -123,10 +122,10 @@ def scrape_rss(source_name: str, config: dict):
 def match_group(entry_categories, caps):
     if not caps:
         return None
-    ecs = [_norm(c) for c in entry_categories]          # κανονικοποιημενες
+    ecs = [_norm(c) for c in entry_categories]          # normalized entry categories
     for gi, group in enumerate(caps):
         glabs = [_norm(x) for x in group.get("labels", [])]  
-        if any(any(g in c for c in ecs) for g in glabs):     # ψαξιμο για sustring
+        if any(any(g in c for c in ecs) for g in glabs):     # search for substring match in any category
             return gi
     return None
 
@@ -146,18 +145,11 @@ def extract_categories(entry):
             cats.append(term)
     if entry.get("category"):
         cats.append(entry.get("category"))
-    return cats  # ακατεργαστες κατηγοριες
+    return cats  # unnormalized categories 
+
 
 def extract_rss_image(entry) -> str:
-    """
-    Robustly extract a representative image URL from RSS/Atom entries.
-    Supports:
-      - media:content (entry.media_content -> list[dict])
-      - media:thumbnail (entry.media_thumbnail -> list[dict] OR str OR list[str])
-      - enclosures (entry.links with rel=enclosure and type=image/*)
-      - <img> inside summary as a fallback
-    """
-    # 1) media:content (IGN commonly)
+    # media:content 
     mc = entry.get("media_content")
     if mc:
         # feedparser typically parses this as list of dicts
@@ -168,25 +160,21 @@ def extract_rss_image(entry) -> str:
         elif isinstance(mc, dict) and mc.get("url"):
             return mc["url"]
 
-    # 2) media:thumbnail (BBC commonly; IGN sometimes)
+    # media:thumbnail 
     mt = entry.get("media_thumbnail")
     if mt:
-        # BBC: list of dicts with 'url'
         if isinstance(mt, list):
-            # could be list[dict] or list[str]
             for item in mt:
                 if isinstance(item, dict) and item.get("url"):
                     return item["url"]
                 if isinstance(item, str) and item.strip().startswith("http"):
                     return item.strip()
-        # IGN (sometimes): string
         if isinstance(mt, str) and mt.strip().startswith("http"):
             return mt.strip()
-        # dict
         if isinstance(mt, dict) and mt.get("url"):
             return mt["url"]
 
-    # 3) enclosures (Atom/RSS)
+    # enclosures (Atom/RSS)
     for l in (entry.get("links") or []):
         if not isinstance(l, dict):
             continue
@@ -195,7 +183,7 @@ def extract_rss_image(entry) -> str:
             if t.startswith("image") and l.get("href"):
                 return l["href"]
 
-    # 4) <img> in summary (fallback)
+    # <img> in summary (fallback)
     summ = entry.get("summary") or ""
     if "<img" in summ:
         try:

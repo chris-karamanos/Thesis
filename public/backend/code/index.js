@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const session = require("express-session");
+const pgSession = require("connect-pg-simple")(session);
 
 require("dotenv").config();
 
@@ -10,15 +12,51 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 
-// Middlewares
+// middlewares
 app.use(cors());
 app.use(express.json());
 
+app.use(session({
+  store: new pgSession({
+    pool: pool,
+    tableName: "session",
+  }),
+  name: "sid",
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 60 * 60 * 1000,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: false, // true only on HTTPS
+  },
+}));
+
+
+// feed API
+const feedRouter = require("./routes/feed");
+app.use("/api/feed", feedRouter);
+
+// login API
+const userLog = require('./routes/user_log');
+app.use('/auth', userLog);
+
+
+// serve frontend static files
+app.use(express.static(path.join(__dirname, "..", "..", "frontend"))); 
+
+
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "..", "..", "frontend", "index.html"));
+  res.redirect("/feed/");
 });
 
-// Healthcheck endpoint
+app.get("/login", (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "..", "frontend", "login", "login.html"));
+});
+
+
+// healthcheck endpoint
 app.get("/health", async (req, res) => {
   try {
     const result = await pool.query("SELECT 1;");
@@ -28,19 +66,9 @@ app.get("/health", async (req, res) => {
     res.status(500).json({ status: "error", db: "disconnected" });
   }
 });
+ 
 
-// Articles API
-const articlesRouter = require("./routes/articles");
-app.use("/articles", articlesRouter);
-
-// Feed API
-const feedRouter = require("./routes/feed");
-app.use("/feed", feedRouter);
-
-// Serve frontend static files
-app.use(express.static(path.join(__dirname, "../..", "frontend")));  
-
-// Start server
+// start server
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
 });

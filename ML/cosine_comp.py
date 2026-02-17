@@ -13,14 +13,14 @@ import lightgbm as lgb
 import psycopg2
 
 
-# ---------- DB ----------
+# db
 def read_view(dsn: str, view_name: str) -> pd.DataFrame:
     q = f"SELECT * FROM {view_name};"
     with psycopg2.connect(dsn) as conn:
         return pd.read_sql(q, conn)
 
 
-# ---------- Ranking metrics ----------
+# ranking metrics 
 def precision_at_k(y_true: np.ndarray, y_score: np.ndarray, k: int) -> float:
     if len(y_true) == 0:
         return np.nan
@@ -76,10 +76,10 @@ if __name__ == "__main__":
     if not dsn:
         raise RuntimeError("Set NEWS_DB_DSN environment variable first.")
 
-    # Load once (all data with day)
+    # load once 
     df = read_view(dsn, "training_dataset_day")
 
-    # Defensive cleaning
+    # defensive cleaning
     needed_cols = ["cosine_similarity", "hours_since_publish", "source", "category", "label", "weight", "request_id", "shown_day"]
     for c in needed_cols:
         if c not in df.columns:
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     df = df.dropna(subset=["cosine_similarity", "hours_since_publish", "source", "category", "label", "weight", "request_id", "shown_day"])
     df["label"] = df["label"].astype(int)
 
-    # Sort unique days
+    # sort unique days
     days = sorted(df["shown_day"].unique())
     if len(days) < 2:
         raise RuntimeError("Need at least 2 distinct days for rolling evaluation.")
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         remainder="drop"
     )
 
-    # Model
+    # model
     logreg = LogisticRegression(solver="liblinear", max_iter=2000)
     pipe = Pipeline([("pre", pre), ("clf", logreg)])
 
@@ -133,10 +133,9 @@ if __name__ == "__main__":
         train_df = df[df["shown_day"].isin(train_days)].copy()
         val_df = df[df["shown_day"] == val_day].copy()
 
-        # -----------------------
-        # Cosine-only baseline
-        # -----------------------
-        # Χρησιμοποιούμε απευθείας το cosine_similarity ως score
+
+        # cosine-only baseline
+
         scored_cos = val_df.copy()
         scored_cos["score"] = scored_cos["cosine_similarity"]
 
@@ -153,9 +152,9 @@ if __name__ == "__main__":
         y_val = val_df["label"].to_numpy()
         w_val = val_df["weight"].to_numpy()
 
-        # -----------------------
+
         # Logistic Regression
-        # -----------------------
+
         pipe.fit(X_train, y_train, clf__sample_weight=w_train)
         val_proba_lr = pipe.predict_proba(X_val)[:, 1]
 
@@ -167,10 +166,9 @@ if __name__ == "__main__":
         scored_lr["score"] = val_proba_lr
         rank_lr = group_ranking_metrics(scored_lr, "score", k_list=(5, 10, 20))
 
-        # -----------------------
+
         # LightGBM (fit per fold)
-        # IMPORTANT: fit preprocessor on TRAIN only, then transform VAL
-        # -----------------------
+
         pre_fold = ColumnTransformer(
             transformers=[
                 ("num", "passthrough", ["cosine_similarity", "hours_since_publish"]),
@@ -203,9 +201,9 @@ if __name__ == "__main__":
         scored_lgb["score"] = val_proba_lgb
         rank_lgb = group_ranking_metrics(scored_lgb, "score", k_list=(5, 10, 20))
 
-        # -----------------------
-        # Store fold results (both models)
-        # -----------------------
+
+        # store fold results (both models)
+        
         fold_rows.append({
             "val_day": str(val_day),
             "train_groups": int(n_train_groups),

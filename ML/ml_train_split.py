@@ -15,18 +15,18 @@ import psycopg2
 import joblib
 
 
-# -----------------------------
-# DB loading
-# -----------------------------
+
+# db loading
+
 def read_view(dsn: str, view_name: str) -> pd.DataFrame:
     q = f"SELECT * FROM {view_name};"
     with psycopg2.connect(dsn) as conn:
         return pd.read_sql(q, conn)
 
 
-# -----------------------------
-# Ranking metrics per request_id
-# -----------------------------
+
+# ranking metrics per request_id
+
 def precision_at_k(y_true: np.ndarray, y_score: np.ndarray, k: int) -> float:
     if len(y_true) == 0:
         return np.nan
@@ -81,13 +81,13 @@ if __name__ == "__main__":
     train_df = read_view(dsn, "training_dataset_train")
     val_df = read_view(dsn, "training_dataset_val")
 
-    # Basic cleaning (defensive)
+    # basic cleaning 
     needed_cols = ["cosine_similarity", "hours_since_publish", "source", "category", "label", "weight", "request_id"]
     for c in needed_cols:
         if c not in train_df.columns or c not in val_df.columns:
             raise RuntimeError(f"Missing required column: {c}")
 
-    # Replace extreme/invalid recency (optional)
+    # replace extreme/invalid recency
     for df in (train_df, val_df):
         df["hours_since_publish"] = pd.to_numeric(df["hours_since_publish"], errors="coerce")
         df["cosine_similarity"] = pd.to_numeric(df["cosine_similarity"], errors="coerce")
@@ -114,9 +114,9 @@ if __name__ == "__main__":
         remainder="drop"
     )
 
-    # -----------------------------
+
     # Logistic Regression baseline
-    # -----------------------------
+
     logreg = LogisticRegression(
         solver="liblinear",
         max_iter=2000
@@ -140,13 +140,13 @@ if __name__ == "__main__":
     print("Ranking metrics:", group_ranking_metrics(val_scored_lr, "score", k_list=(5,10,20)))
 
 
-    # -----------------------------
+
     # LightGBM 
-    # -----------------------------
+
     try:
         import lightgbm as lgb
 
-        # Build matrices after preprocessing
+        # build matrices after preprocessing
         pre_lgb = clone(pre)
         X_train_mat = pre_lgb.fit_transform(X_train)
         X_val_mat = pre_lgb.transform(X_val)

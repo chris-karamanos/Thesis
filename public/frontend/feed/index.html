@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>News Recommender — Dataset Builder UI</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+ <header class="app-header">
+  <div class="header-inner">
+    <div class="title">
+      <h1>News Recommender — Personalized Feed</h1>
+      <p>Explainable & diversity-aware recommendations.</p>
+    </div>
+
+    <div class="controls">
+      <div class="userbox" title="Signed-in user">
+        <span class="userbox-label">user: </span>
+        <span id="username" class="userbox-value">—</span>
+      </div>
+    </div>
+  </div>
+
+  <button id="logoutBtn" class="btn-logout" type="button">Logout</button>
+</header>
+
+
+  <main class="main-layout">
+  <!-- Left side panel -->
+  <aside class="side-panel">
+    <div class="side-card">
+      <div class="side-title">Επιλέξτε κατηγορία</div>
+
+      <select id="categorySelect" class="side-select">
+        <option value="__all__">Όλες</option>
+        <option value="Πολιτική">Πολιτική</option>
+        <option value="Οικονομία">Οικονομία</option>
+        <option value="Αθλητικά">Αθλητικά</option>
+        <option value="Gaming">Gaming</option>
+      </select>
+    </div>
+  </aside>
+
+  <!-- Main feed area -->
+  <section class="main-content">
+    <div class="diversity-bar" id="diversityBar">
+      <div class="diversity-text">
+        <div class="diversity-title">Προσαρμόστε το επίπεδο ποικιλίας που επιθυμείτε για τη ροή ειδήσεων σας</div>
+        <div class="diversity-subtitle">
+         Χαμηλότερες τιμές διατηρούν τις προτάσεις πιο κοντά στις προτιμήσεις σας. Yψηλότερες τιμές αυξάνουν την ποικιλία και συμβάλλουν στη μείωση του φαινομένου "echo chamber".
+        </div>
+      </div>
+
+      <div class="diversity-controls">
+        <input id="divSlider" type="range" min="0" max="10" step="1" value="3" />
+        <div class="diversity-value">
+          λ = <span id="divValue">0.3</span>
+        </div>
+        <button id="divApplyBtn" class="btn-adjust" type="button">Επιλογή</button>
+        <div class="diversity-status" id="divStatus" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <div id="hintBox" class="hint hidden"></div>
+    <div id="grid" class="grid"></div>
+  </section>
+</main>
+
+
+  <div id="toast" class="toast"></div>
+  <script src="./app.js" defer></script>  
+</body>
+</html>

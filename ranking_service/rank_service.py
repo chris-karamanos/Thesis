@@ -22,17 +22,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 
-# -----------------------------
-# Config
-# -----------------------------
-# Put your model here (relative to ranking_service/ folder)
-MODEL_PATH = os.getenv("RANK_MODEL_PATH", "../ML/model_ranker.joblib")
+
+MODEL_PATH = os.getenv("RANK_MODEL_PATH", "model_ranker.joblib")
 DEFAULT_K = int(os.getenv("RANK_DEFAULT_K", "50"))
 
 
-# -----------------------------
-# Request/Response schemas
-# -----------------------------
+# request/response schemas
+
 class Candidate(BaseModel):
     article_id: int
     title: Optional[str] = None
@@ -42,7 +38,7 @@ class Candidate(BaseModel):
 
     # From candidate view
     published_at: Optional[str] = None
-    distance: float = None        # pgvector <=> distance (assumed cosine distance)
+    distance: float = None        # cosine distance
     age_seconds: float = None     # NOW() - published_at in seconds
 
     # For MMR content diversity
@@ -60,12 +56,12 @@ class RankedItem(BaseModel):
     rank: int
     mmr_score: float
     rel_score: float
-
     source: Optional[str] = None
     category: Optional[str] = None
     language: Optional[str] = None
     title: Optional[str] = None
-
+    explain_relevance: Optional[Dict[str, Any]] = None
+    explain_diversity: Optional[Dict[str, Any]] = None
 
 class RerankResponse(BaseModel):
     lambda_mmr: float
@@ -73,40 +69,49 @@ class RerankResponse(BaseModel):
     items: List[RankedItem]
 
 
-# -----------------------------
-# Globals loaded at startup
-# -----------------------------
+
+# globals loaded at startup
+
 PIPE = None
 FEATURE_COLS: Optional[List[str]] = None
+PRE = None
+CLF = None
+TRANSFORM_FEATURE_NAMES = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load model artifacts once at startup
-    global PIPE, FEATURE_COLS
+    # load model artifacts once at startup
+    global PIPE, FEATURE_COLS, PRE, CLF, TRANSFORM_FEATURE_NAMES
     if not os.path.exists(MODEL_PATH):
         raise RuntimeError(f"Model file not found at: {MODEL_PATH}")
 
     PIPE = joblib.load(MODEL_PATH)
+    PRE = PIPE.named_steps.get("pre")
+    CLF = PIPE.named_steps.get("clf")
 
-    # If available, enforce model feature columns at inference
+    if PRE is not None:
+    # feature names after preprocessing 
+        try:
+            TRANSFORM_FEATURE_NAMES = list(PRE.get_feature_names_out())
+        except Exception:
+            TRANSFORM_FEATURE_NAMES = None
+
+    # if available, enforce model feature columns at inference
     FEATURE_COLS = getattr(PIPE, "feature_names_in_", None)
     if FEATURE_COLS is not None:
         FEATURE_COLS = list(FEATURE_COLS)
     else:
-        # Fallback to known training features (from your ml_train_final.py)
+        # fallback to known training features 
         FEATURE_COLS = ["cosine_similarity", "hours_since_publish", "source", "category"]
 
     yield
-    # no cleanup needed
 
 
 app = FastAPI(title="Ranker+MMR Service", lifespan=lifespan)
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
+
 def _normalize_rows(X: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(X, axis=1, keepdims=True) + 1e-12
     return X / norms
@@ -118,7 +123,7 @@ def _mmr_params(div_level: float) -> Tuple[float, float, float, float, int]:
 
     lambda_mmr: accuracy vs diversity tradeoff
       - div=0   -> lambda ~ 0.95 (mostly relevance)
-      - div=1   -> lambda ~ 0.55 (more diversity, but not chaotic)
+      - div=1   -> lambda ~ 0.55 (more diversity)
 
     gamma_*: soft penalties for repeated source/category/language
     max_per_source: hard cap in [15..5] as requested
@@ -127,7 +132,7 @@ def _mmr_params(div_level: float) -> Tuple[float, float, float, float, int]:
 
     gamma_source = 0.08 * div_level
     gamma_category = 0.05 * div_level
-    gamma_lang = 0.02 * div_level  # more mild
+    gamma_lang = 0.01 * div_level  # more mild
 
     # hard cap per source: 15 -> 5
     max_per_source = int(round(15 - 10 * div_level))
@@ -138,15 +143,11 @@ def _mmr_params(div_level: float) -> Tuple[float, float, float, float, int]:
 
 def _build_features_for_model(c: Candidate) -> Dict[str, Any]:
     """
-    Build EXACT feature vector used at training time:
+    Build feature vector used at training time:
       - cosine_similarity
       - hours_since_publish
       - source
       - category
-
-    Assumptions:
-      - Candidate.distance is cosine distance (so cosine_similarity = 1 - distance)
-      - Candidate.age_seconds is recency in seconds (so hours_since_publish = age_seconds / 3600)
     """
     if c.distance is None:
         raise HTTPException(
@@ -208,25 +209,33 @@ def mmr_rerank(
     languages: List[str],
     k: int,
     diversity_level: float,
-) -> Tuple[List[int], List[float], float, int]:
+) -> Tuple[List[int], List[float], List[Dict[str, Any]], float, int]:
     """
-    Multi-objective MMR:
-      score = λ*rel - (1-λ)*maxSimToSelected
-              - γs*count(source) - γc*count(category) - γl*count(lang)
+    Multi-objective MMR with explicit explanation decomposition.
+
+      score = λ*rel - (1-λ)*maxSimToSelected- γs*count(source) - γc*count(category) - γl*count(lang)
 
     plus hard cap on max items per source.
+
+    Returns:
+      selected_idx: indices selected in order
+      selected_scores: MMR scores per selected item
+      selected_debug: per-rank dict explaining why it was selected
+      lambda_mmr: λ
+      max_per_source: hard cap
     """
     n = int(len(rel))
     k = min(int(k), n)
 
     lam, g_s, g_c, g_l, max_per_source = _mmr_params(float(diversity_level))
 
-    # cosine sim matrix NxN (N<=200 is fine)
+    # cosine sim matrix NxN 
     emb_n = _normalize_rows(emb)
     sim = emb_n @ emb_n.T
 
     selected: List[int] = []
     selected_scores: List[float] = []
+    selected_debug: List[Dict[str, Any]] = []
 
     src_count: Dict[str, int] = {}
     cat_count: Dict[str, int] = {}
@@ -234,32 +243,66 @@ def mmr_rerank(
 
     remaining = set(range(n))
 
-    # 1st: highest relevance
+    # 1st pick: highest relevance 
     first = int(np.argmax(rel))
     selected.append(first)
     remaining.remove(first)
 
-    # For first item, define an MMR score consistent with formula (no redundancy yet)
     s0 = sources[first] or ""
     c0 = categories[first] or ""
     l0 = languages[first] or ""
-    mmr_first = lam * float(rel[first])  # maxSim=0, penalties=0 at start
-    selected_scores.append(mmr_first)
+
+    # For first item: no redundancy yet and no repetition penalties
+    max_sim0 = 0.0
+    pen_s0 = 0
+    pen_c0 = 0
+    pen_l0 = 0
+
+    score0 = (
+        lam * float(rel[first])
+        - (1.0 - lam) * max_sim0
+        - g_s * pen_s0
+        - g_c * pen_c0
+        - g_l * pen_l0
+    )
+    selected_scores.append(float(score0))
+
+    selected_debug.append(
+        {
+            "lambda": float(lam),
+            "rel": float(rel[first]),
+            "max_sim_to_selected": float(max_sim0),
+            "pen_source_count": int(pen_s0),
+            "pen_category_count": int(pen_c0),
+            "pen_language_count": int(pen_l0),
+            "gamma_source": float(g_s),
+            "gamma_category": float(g_c),
+            "gamma_language": float(g_l),
+            "hard_cap_max_per_source": int(max_per_source),
+            "hard_cap_blocked": False,
+            "message": "Επιλέχθηκε ως το πιο σχετικό άρθρο.",
+        }
+    )
 
     src_count[s0] = src_count.get(s0, 0) + 1
     cat_count[c0] = cat_count.get(c0, 0) + 1
     lang_count[l0] = lang_count.get(l0, 0) + 1
 
-    # iterative greedy selection
+    # iterative greedy selection 
     while len(selected) < k and remaining:
         best_i = None
-        best_score = -1e9
+        best_score = -1e18
+        best_dbg: Optional[Dict[str, Any]] = None
 
         sel_idx = np.array(selected, dtype=np.int32)
+
+        # track if hard cap blocks candidates from their source
+        blocked_any = False
 
         for i in list(remaining):
             s = sources[i] or ""
             if src_count.get(s, 0) >= max_per_source:
+                blocked_any = True
                 continue
 
             # redundancy penalty: similarity to closest already selected item
@@ -268,30 +311,100 @@ def mmr_rerank(
             c = categories[i] or ""
             l = languages[i] or ""
 
-            pen_s = src_count.get(s, 0)
-            pen_c = cat_count.get(c, 0)
-            pen_l = lang_count.get(l, 0)
+            pen_s = int(src_count.get(s, 0))
+            pen_c = int(cat_count.get(c, 0))
+            pen_l = int(lang_count.get(l, 0))
 
-            score = (
-                lam * float(rel[i])
-                - (1.0 - lam) * max_sim
-                - g_s * pen_s
-                - g_c * pen_c
-                - g_l * pen_l
-            )
+            rel_i = float(rel[i])
+
+            score_rel = lam * rel_i
+            score_red = (1.0 - lam) * max_sim
+            score_pen = (g_s * pen_s) + (g_c * pen_c) + (g_l * pen_l)
+
+            score = score_rel - score_red - score_pen
 
             if score > best_score:
                 best_score = score
                 best_i = i
 
-        # Fallback: if hard caps block everything, pick max relevance
+                # if redundancy dominates -> "diversity"
+                # else -> "relevance"
+                try:
+                    rel_vals = np.array([float(rel[j]) for j in remaining], dtype=float)
+                    rel_vals.sort()
+                    # rank position of rel_i
+                    rel_rank = int(np.searchsorted(rel_vals, rel_i, side="right"))
+                    rel_pct = rel_rank / max(1, len(rel_vals))  # percentile
+                except Exception:
+                    rel_pct = 0.5
+
+                # heuristics to explain the main driver of selection
+                LOW_REL_PCT = 0.35
+                HIGH_REL_PCT = 0.70
+                LOW_REDUNDANCY = 0.55  # lower max_sim => more novelty
+
+                # decide main driver
+                if rel_pct >= HIGH_REL_PCT and score_rel >= (score_red + score_pen):
+                    msg = "Επιλέχθηκε κυρίως λόγω υψηλής σχετικότητας με τα ενδιαφέροντά σας."
+                elif rel_pct <= LOW_REL_PCT and max_sim <= LOW_REDUNDANCY:
+                    msg = "Χαμηλή σχετικότητα, αλλά επιλέχθηκε για να αυξήσει την ποικιλία και να μειώσει την επανάληψη."
+                elif score_pen > score_rel and score_pen > score_red:
+                    msg = "Επιλέχθηκε με στόχο την ποικιλία (λήφθηκαν υπόψη ποινές σε πηγή/κατηγορία/γλώσσα)."
+                elif score_red >= score_rel:
+                    msg = "Επιλέχθηκε κυρίως για να μειώσει την επανάληψη στη λίστα (ποικιλία/novelty)."
+                else:
+                    msg = "Επιλέχθηκε ως ισορροπία μεταξύ σχετικότητας και ποικιλίας."
+
+
+                best_dbg = {
+                    "lambda": float(lam),
+                    "lambda_user": float(diversity_level),
+                    "rel": float(rel_i),
+                    "max_sim_to_selected": float(max_sim),
+                    "pen_source_count": int(pen_s),
+                    "pen_category_count": int(pen_c),
+                    "pen_language_count": int(pen_l),
+                    "gamma_source": float(g_s),
+                    "gamma_category": float(g_c),
+                    "gamma_language": float(g_l),
+                    "hard_cap_max_per_source": int(max_per_source),
+                    "hard_cap_blocked": False,
+                    "mmr_components": {
+                        "lambda_rel": float(score_rel),
+                        "(1-lambda)_redundancy": float(score_red),
+                        "penalties_total": float(score_pen),
+                    },
+                    "message": msg,
+                }
+
+        # Fallback: if hard caps block everything, pick max relevance among remaining
         if best_i is None:
             best_i = max(list(remaining), key=lambda j: float(rel[j]))
             best_score = lam * float(rel[best_i])
 
+            s = sources[best_i] or ""
+            c = categories[best_i] or ""
+            l = languages[best_i] or ""
+
+            best_dbg = {
+                "lambda": float(lam),
+                "rel": float(rel[best_i]),
+                "max_sim_to_selected": 0.0,
+                "pen_source_count": int(src_count.get(s, 0)),
+                "pen_category_count": int(cat_count.get(c, 0)),
+                "pen_language_count": int(lang_count.get(l, 0)),
+                "gamma_source": float(g_s),
+                "gamma_category": float(g_c),
+                "gamma_language": float(g_l),
+                "hard_cap_max_per_source": int(max_per_source),
+                "hard_cap_blocked": True,
+                "message": "Hard cap blocked remaining sources; fell back to max relevance among remaining.",
+            }
+
         selected.append(best_i)
         remaining.remove(best_i)
         selected_scores.append(float(best_score))
+        selected_debug.append(best_dbg or {"message": "No debug info."})
 
         s = sources[best_i] or ""
         c = categories[best_i] or ""
@@ -301,12 +414,73 @@ def mmr_rerank(
         cat_count[c] = cat_count.get(c, 0) + 1
         lang_count[l] = lang_count.get(l, 0) + 1
 
-    return selected, selected_scores, lam, max_per_source
+    return selected, selected_scores, selected_debug, float(lam), int(max_per_source)
 
 
-# -----------------------------
+
+def explain_relevance(feature_row: Dict[str, Any], top_k: int = 3) -> Dict[str, Any]:
+    """
+    Returns per-item LR explanation based on log-odds contributions.
+    """
+    if PIPE is None or PRE is None or CLF is None:
+        return {"reasons": [], "note": "explainability_not_available"}
+
+    df = pd.DataFrame([feature_row])
+    X = df[FEATURE_COLS]  # same order as scoring
+
+    # transform -> 1 x D
+    Xt = PRE.transform(X)
+
+    # ensure dense for easy elementwise math
+    if hasattr(Xt, "toarray"):
+        Xt = Xt.toarray()
+
+    x = Xt[0]  # shape (D,)
+    coef = CLF.coef_[0]   # shape (D,)
+    intercept = float(CLF.intercept_[0])
+
+    contrib = x * coef  # log-odds contributions per transformed feature
+
+    names = TRANSFORM_FEATURE_NAMES
+    if not names or len(names) != len(contrib):
+        # fallback: index-based
+        names = [f"f{i}" for i in range(len(contrib))]
+
+    # pick top positive and optionally top negative
+    idx_sorted_pos = np.argsort(contrib)[::-1]
+    top_pos = [i for i in idx_sorted_pos if contrib[i] > 0][:top_k]
+
+    idx_sorted_neg = np.argsort(contrib)
+    top_neg = [i for i in idx_sorted_neg if contrib[i] < 0][:min(2, top_k)]
+
+    def _humanize(fname: str, val: float) -> str:
+        if "cosine_similarity" in fname:
+            return f"Υψηλή σημασιολογική ομοιότητα με το προφίλ σας"
+        if "hours_since_publish" in fname:
+            return f"Παλιό άρθρο"
+        if "cat__source_" in fname:
+            s = fname.split("cat__source_", 1)[1]
+            return f"Προτίμηση πηγής: {s}"
+        if "cat__category_" in fname:
+            c = fname.split("cat__category_", 1)[1]
+            return f"Προτίμηση κατηγορίας: {c}"
+        return fname
+
+    reasons_pos = [{"feature": names[i], "contribution": float(contrib[i]), "text": _humanize(names[i], contrib[i])}
+                   for i in top_pos]
+    reasons_neg = [{"feature": names[i], "contribution": float(contrib[i]), "text": _humanize(names[i], contrib[i])}
+                   for i in top_neg]
+
+    return {
+        "intercept": intercept,
+        "top_positive": reasons_pos,
+        "top_negative": reasons_neg,
+    }
+
+
+
 # Endpoint
-# -----------------------------
+
 @app.post("/rerank", response_model=RerankResponse)
 def rerank(req: RerankRequest) -> RerankResponse:
     if not req.candidates:
@@ -332,7 +506,7 @@ def rerank(req: RerankRequest) -> RerankResponse:
     emb = np.vstack(embeddings)
     rel = _score_with_model(feature_rows)
 
-    selected_idx, mmr_scores, lam, max_per_source = mmr_rerank(
+    selected_idx, mmr_scores, selected_debug, lam, max_per_source = mmr_rerank(
         rel=rel,
         emb=emb,
         sources=sources,
@@ -341,6 +515,7 @@ def rerank(req: RerankRequest) -> RerankResponse:
         k=req.k,
         diversity_level=req.diversity_level,
     )
+
 
     items: List[RankedItem] = []
     for rank, (i, ms) in enumerate(zip(selected_idx, mmr_scores), start=1):
@@ -355,6 +530,8 @@ def rerank(req: RerankRequest) -> RerankResponse:
                 category=cand.category,
                 language=cand.language,
                 title=cand.title,
+                explain_relevance=explain_relevance(feature_rows[i], top_k=3),
+                explain_diversity=selected_debug[rank-1],
             )
         )
 

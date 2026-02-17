@@ -5,7 +5,7 @@ const pool = new Pool({
   connectionString: process.env.NEWS_DB_DSN_DOCKER,
 });
 
-// Optional, για debug
+// debug
 pool.on("error", (err) => {
   console.error("Unexpected error on idle client", err);
   process.exit(-1);

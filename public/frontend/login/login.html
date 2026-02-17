@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>News Recommender — Sign in</title>
+  <link rel="stylesheet" href="login.css" />
+</head>
+
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">NR</div>
+        <div class="brand-text">
+          <div class="brand-title">News Recommender</div>
+          <div class="brand-subtitle">Explainable & diversity-aware feed</div>
+        </div>
+      </div>
+
+      <div class="header-chip">
+        <span class="chip-dot" aria-hidden="true"></span>
+        <span>Secure Login</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main">
+    <section class="panel" aria-labelledby="loginTitle">
+      <div class="panel-top">
+        <h1 id="loginTitle">Sign in</h1>
+        <p class="muted">
+          Χρησιμοποιήστε το <strong>username ή το email</strong> και τον κωδικό σας για να αποκτήσετε πρόσβαση στην εξατομικευμένη ροή ειδήσεων.
+        </p>
+      </div>
+
+      <form class="form" id="loginForm" autocomplete="on">
+        <label class="field">
+          <span class="label">Username or Email</span>
+          <input
+            class="input"
+            type="text"
+            name="identifier"
+            placeholder="e.g. nick or nick@example.com"
+            autocomplete="username"
+            required
+          />
+        </label>
+
+        <label class="field">
+          <span class="label">Password</span>
+          <input
+            class="input"
+            type="password"
+            name="password"
+            placeholder="Your password"
+            autocomplete="current-password"
+            required
+          />
+        </label>
+        </div>
+
+        <div class="buttons">
+          <button class="btn btn-primary" type="submit">Sign in</button>
+          <button class="btn btn-secondary" type="button" id="signupBtn">Sign up</button>
+        </div>
+
+        <div id="status" class="status" style="display:none;"></div>
+        </form>
+        
+    <aside class="side">
+      <div class="side-card">
+        <div class="side-title">Ενημέρωση για όλους, από όλους!</div>
+
+        <div class="side-metrics">
+          <div class="metric">
+            <div class="metric-k">Διαφάνεια</div>
+            <div class="metric-v">Σαφείς Προτάσεις</div>
+          </div>
+          <div class="metric">
+            <div class="metric-k">Πολύπλευρη Ενημέρωση</div>
+            <div class="metric-v">Προσαρμόσιμη ροή με βάση τις δικές σας προτιμήσεις</div>
+          </div>
+          <div class="metric">
+            <div class="metric-k">Έλεγχος</div>
+            <div class="metric-v">Συνεχής Ανατροφοδότηση Περιεχομένου</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-note">
+        <span class="badge">Patras • Thesis</span>
+        <span class="muted">Tackling echo chambers in a news aggregator</span>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Sign-up Modal -->
+  <div class="modal-overlay" id="signupOverlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="signupTitle">
+      <div class="modal-header">
+        <h2 id="signupTitle">Create account</h2>
+        <button class="icon-btn" type="button" id="closeSignup" aria-label="Close">×</button>
+      </div>
+
+      <form class="modal-form" id="signupForm" autocomplete="on">
+        <label class="field">
+          <span class="label">Username or Email</span>
+          <input class="input" type="text" name="identifier" placeholder="e.g. nick or nick@example.com" required />
+        </label>
+
+        <label class="field">
+          <span class="label">Password</span>
+          <input class="input" type="password" name="password" placeholder="Choose a password" required />
+        </label>
+
+        <div id="signupStatus" class="status" style="display:none;"></div>
+
+        <div class="buttons">
+          <button class="btn btn-primary" type="submit">Create account</button>
+          <button class="btn btn-secondary" type="button" id="cancelSignup">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="muted">© News Recommender</span>
+      <span class="muted">•</span>
+      <a class="link" href="#">Privacy</a>
+      <span class="muted">•</span>
+      <a class="link" href="#">Terms</a>
+    </div>
+  </footer>
+</body>
+<script src="login.js" defer></script>
+</html>

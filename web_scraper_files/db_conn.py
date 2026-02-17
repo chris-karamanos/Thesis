@@ -26,8 +26,8 @@ _embedding_model: SentenceTransformer | None = None
 
 def get_embedding_model() -> SentenceTransformer:
     """
-    Φορτώνει το SentenceTransformer μοντέλο μία φορά (lazy singleton)
-    και το επαναχρησιμοποιεί σε όλο το run του scraper.
+    Loads and returns the sentence transformer model for embeddings once.
+    Subsequent calls return the cached model.
     """
     global _embedding_model
     if _embedding_model is None:
@@ -41,14 +41,13 @@ def get_db_conn() -> psycopg.Connection:
         raise RuntimeError("NEWS_DB_DSN is not set")
 
     conn = psycopg.connect(dsn, autocommit=False)
-    register_vector(conn)  # για να περνάμε Python lists -> pgvector(vector)
+    register_vector(conn)  # to handle vector(384) type with list[float]
     return conn
 
 
 def build_embedding_text(a: dict, max_chars: int = 1000) -> str:
     """
-    Φτιάχνει το κείμενο για embedding από ήδη χαρτογραφημένο άρθρο (map_article).
-    Χρησιμοποιεί title + category + πρώτους max_chars από full_text ή summary.
+    Builds a text string for embedding from the article dict.
     """
     title = a.get("title") or ""
     category = a.get("category") or ""
@@ -79,8 +78,8 @@ def build_embedding_text(a: dict, max_chars: int = 1000) -> str:
 
 def compute_article_embeddings(mapped_articles: list[dict]) -> list[list[float]]:
     """
-    Παίρνει λίστα από mapped articles (όπως γυρνάει το map_article)
-    και επιστρέφει λίστα από embeddings (list[float]) ίδιας σειράς.
+    Takes a list of mapped article dicts (with 'title', 'category', 'full_text', 'summary'),
+    builds embedding texts, and returns a list of embeddings as lists of floats.
     """
     model = get_embedding_model()
 
@@ -101,12 +100,12 @@ def compute_article_embeddings(mapped_articles: list[dict]) -> list[list[float]]
 
 
 
-# Κανονικοποιηση URLs με αφαιρεση παραμετρων παρακολουθησης
-TRACKING_PREFIXES = ("utm_", "gclid", "fbclid")
+
+TRACKING_PREFIXES = ("utm_", "gclid", "fbclid")         # tracking prefixes in urls to remove for normalization 
 
 def normalize_url(url: str) -> str:
     parts = list(urlsplit(url.strip()))
-    parts[4] = ""  # αφαιρεση fragment
+    parts[4] = ""  # remove fragment
     q = [(k, v) for k, v in parse_qsl(parts[3], keep_blank_values=True)
          if not k.lower().startswith(TRACKING_PREFIXES)]
     parts[3] = urlencode(q, doseq=True)
@@ -125,25 +124,25 @@ def ensure_utc(dt, naive_policy="assume_utc", naive_tz="Europe/Athens"):
     if dt is None:
         return None
 
-    # datetime αντικειμενο
+    # datetime object
     if isinstance(dt, datetime):
-        if dt.tzinfo:                   # aware → μετατρεψε σε UTC
+        if dt.tzinfo:                   # if aware turn to UTC
             return dt.astimezone(timezone.utc)
-        # naive → εφαρμοσε policy
+        # if naive handle according to policy
         if naive_policy == "assume_utc":
             return dt.replace(tzinfo=timezone.utc)
         elif naive_policy == "assume_local":
             return dt.replace(tzinfo=ZoneInfo(naive_tz)).astimezone(timezone.utc)
-        else:  # απορριψε
+        else:  # reject
             raise ValueError(f"Naive datetime with no tzinfo: {dt!r}")
 
-    # Unix timestamp (int/float)
+    # Unix timestamp 
     if isinstance(dt, (int, float)):
         return datetime.fromtimestamp(dt, tz=timezone.utc)
 
     s = str(dt).strip()
 
-    # ISO-8601 με timezone χωρίς ':'
+    # ISO-8601 with timezone without ':'
     m = re.search(r"([+-]\d{2})(\d{2})$", s)
     if m:
         s = s[:-5] + f"{m.group(1)}:{m.group(2)}"
@@ -167,7 +166,7 @@ def ensure_utc(dt, naive_policy="assume_utc", naive_tz="Europe/Athens"):
     except Exception:
         pass
 
-    # Συνηθης φορμες ημερομηνιας/ωρας
+    # usual datetime formats 
     for fmt in ("%a, %d %b %Y %H:%M:%S %z",
                 "%d %b %Y %H:%M:%S %z",
                 "%Y-%m-%d %H:%M:%S"):
@@ -189,10 +188,10 @@ DetectorFactory.seed = 0
 def guess_lang(title: str, content: str) -> str | None:
     text = (title or "") + " " + (content or "")
     text = text.strip()
-    if len(text) < 25:   # προφύλαξη για πολύ μικρά κείμενα
+    if len(text) < 25:   # cut off short texts
         return None
     try:
-        code = detect(text)  # π.χ. 'en', 'el'
+        code = detect(text)  #'en', 'el'
         return code
     except Exception:
         return None
@@ -218,7 +217,7 @@ ON CONFLICT (url) DO UPDATE SET
 
 
 def map_article(a: dict) -> dict:
-    # Αντιστοιχιση αρθρου σε φορμα για ΒΔ
+    # mapping from raw article dict to the final dict we want to insert in the DB
     now = datetime.now(timezone.utc)
     return {
         "title":        a.get("title"),
@@ -239,26 +238,20 @@ def upsert_articles(
     articles: List[Dict[str, Any]],
 ) -> tuple[int, int, int]:
     """
-    Παίρνει raw articles από τον scraper, τα περνάει από map_article,
-    υπολογίζει embedding για το καθένα και κάνει upsert στη ΒΔ,
-    χρησιμοποιώντας το SQL_UPSERT (με embedding).
-
-    Επιστρέφει:
-        total   = πόσα άρθρα προσπαθήσαμε να upsert-άρουμε
-        inserts = πόσα ήταν νέα (δεν υπήρχαν πριν)
-        updates = πόσα ήταν ήδη στη βάση
+        Takes a list of raw article dicts (as returned by scrape_rss or scrape_html),
+        maps them, computes embeddings, and upserts them into the DB.
+        Returns a tuple of (total_articles, inserts, updates).
     """
 
-    # Αν δεν έχουμε άρθρα, επιστρέφουμε μηδενικά
     if not articles:
         return 0, 0, 0
 
-    # Χαρτογράφηση με την ΠΑΛΙΑ λογική σου (normalize_url, ensure_utc, guess_lang, κτλ.)
+    # map articles to the final format for DB insertion
     mapped_articles: list[dict] = [map_article(a) for a in articles]
 
     total = len(mapped_articles)
 
-    # Βρίσκουμε ποια URLs υπάρχουν ήδη στη ΒΔ, ώστε να μετρήσουμε inserts/updates
+    # finding existing URLs to determine inserts vs updates
     urls = [a["url"] for a in mapped_articles]
 
     with conn.cursor() as cur:
@@ -276,14 +269,14 @@ def upsert_articles(
         else:
             inserts += 1
 
-    # Υπολογίζουμε embeddings για ΟΛΑ τα mapped_articles, με σειρά
+    # calculate embeddings for all articles (both new and existing)
     embeddings = compute_article_embeddings(mapped_articles)
 
-    # Δένουμε embedding σε κάθε dict, ώστε να το χρησιμοποιήσει το SQL_UPSERT
+    # attach embeddings to the mapped articles
     for a, emb in zip(mapped_articles, embeddings):
-        a["embedding"] = emb  # list[float], ο adapter θα το περάσει ως vector(384)
+        a["embedding"] = emb  
 
-    # Τρέχουμε το SQL_UPSERT ένα-ένα (named parameters όπως ΠΡΙΝ)
+    # execure upsert for each article
     with conn.cursor() as cur:
         for a in mapped_articles:
             cur.execute(SQL_UPSERT, a)

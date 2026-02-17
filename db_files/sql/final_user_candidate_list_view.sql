@@ -9,6 +9,7 @@ WITH per_user AS (
     a.category,
     a.url,
     a.published_at,
+	a.language,
     a.embedding,
     (a.embedding <=> u.embedding) AS distance,
     EXTRACT(EPOCH FROM (NOW() - a.published_at)) AS age_seconds

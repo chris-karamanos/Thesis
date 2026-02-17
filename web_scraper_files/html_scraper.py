@@ -2,43 +2,9 @@ import re, time
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from extractors import (
-    fetch_url, extract_full_text_generic, clean_dom_in_root,
+    fetch_url, fetch_html, extract_full_text_generic, clean_dom_in_root,
     postfilter_text_lines, extract_published_el, is_paywalled,
     extract_bleacherreport_body, REQUEST_SLEEP)
-
-def fetch_html(url: str, config: dict, *, is_listing: bool = False) -> str | None:
-    """
-    Κάνει πρώτα κανονικό fetch (requests) και αν αποτύχει
-    και είναι ενεργό το use_playwright, δοκιμάζει dynamic fetch.
-    Χρησιμοποιείται τόσο για listing pages όσο και για article pages.
-    """
-    # Static fetch
-    html = fetch_url(url)
-    if html:
-        return html
-
-    # Αν δεν έχουμε HTML, δοκίμασε Playwright 
-    if config.get("use_playwright") == True:
-        from extractors import fetch_dynamic_url, HAVE_PLAYWRIGHT
-
-        if HAVE_PLAYWRIGHT:
-            if is_listing:
-                # διαφορετικό default selector για listings
-                wait_sel = config.get("listing_dynamic_wait_selector", "main, .site-main, body")
-            else:
-                wait_sel = config.get("dynamic_wait_selector", "[data-testid='article-body'] p")
-
-            print(f"[DynamicFetch] Trying Playwright for {url} (is_listing={is_listing})")
-            html_dyn = fetch_dynamic_url(url, wait_selector=wait_sel)
-            if html_dyn:
-                print("[DynamicFetch] Playwright fetch successful.")
-                return html_dyn
-            else:
-                print("[DynamicFetch] Playwright returned empty HTML.")
-        else:
-            print("[DynamicFetch] Playwright not available; cannot fetch dynamically.")
-
-    return None
 
 
 def _url_allowed(url: str, allow_pat: str | None, block_pat: str | None) -> bool:
@@ -72,15 +38,15 @@ def discover_article_links_html(config: dict) -> list[dict]:
         if not absu or absu in seen:
             print(f"[HTML]   Skipping seen/empty url: {absu}")
             return False
-        # Ελεγχος allow/block regex
+        # check allow/block regex
         if not _url_allowed(absu, allow_pat, block_pat):
             print(f"[HTML]   URL blocked by allow/block regex: {absu}")
             return False
 
-        # Αν δεν έχουμε καθόλου paywall config, μην κάνεις extra fetch
+        # if no paywall selectors/phrases, consider it ok without fetching
         if not paywall_sels and not paywall_phr:
             return True     
-        # Διαφορετικά, κάνε τον κανονικό paywall έλεγχο
+        # else fetch and check for paywall indicators
         html = fetch_url(absu)
         if not html:
             return False
@@ -108,8 +74,8 @@ def discover_article_links_html(config: dict) -> list[dict]:
     for start_url in listing_urls:
         print(f"[HTML] Starting listing URL: {start_url}")
         url, pages = start_url, 0
-        taken_here = 0                  #  μετρητης ανα url 
-        listing_cat = url_cat_map.get(start_url, config.get("category", ""))  # κατηγορια για αυτο το listing
+        taken_here = 0                                                          #  counter per url 
+        listing_cat = url_cat_map.get(start_url, config.get("category", ""))    # category for this listing
 
         while url and pages < max_pages and len(out) < max_articles:
             html = fetch_html(url, config, is_listing=True)
@@ -177,7 +143,7 @@ def extract_meta_from_article_html(html: str, base_url: str | None = None) -> di
         if tag and tag.get("content"):
             img = tag["content"].strip()
 
-    # Absolute-ize if relative
+    # Normalize image URL if found
     if img and base_url:
         img = urljoin(base_url, img)        
     
@@ -188,7 +154,7 @@ def extract_meta_from_article_html(html: str, base_url: str | None = None) -> di
         pub = tag["content"]
 
     if not pub:
-        # Δοκιμαζω data-testid / id μοτιβα  
+        # check for common <time> elements with datetime or data-time attributes  
         cand = soup.select_one("[data-testid*='post_date'], [id*='post_date'], [class*='post_date']")
         if cand:
             txt = cand.get_text(" ", strip=True)
@@ -197,7 +163,6 @@ def extract_meta_from_article_html(html: str, base_url: str | None = None) -> di
                     from dateutil.parser import parse as dtparse
                     pub = dtparse(txt, fuzzy=True).isoformat()
                 except Exception:
-                    # ακατεργαστο αν δεν παει με dateutil
                     pub = txt        
             
     meta.update(title=title, summary=desc, published=pub or "", image_url=img or "")
@@ -224,7 +189,7 @@ def scrape_html(source_name: str, config: dict) -> list[dict]:
         title = meta.get("title") or ""
 
         if not meta.get("published"):
-            meta["published"] = pub  # συμπληρωση απο <time> ή regex
+            meta["published"] = pub  # filled from common patterns
 
         art = {
             "title":     meta.get("title"),

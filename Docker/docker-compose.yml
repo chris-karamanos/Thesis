@@ -6,28 +6,27 @@ services:
     container_name: thesis-db
     env_file:
       - ../.env
-    # Εξωτερική πόρτα 5433 -> εσωτερική 5432
-    # ώστε να μην συγκρουστεί με τυχόν local Postgres στο 5432
+    # outer port 5433 -> inner port 5432 so there's no conflict with local Postgres running on 5432
     ports:
       - "5433:5432"
     volumes:
-      # Μόνιμος χώρος για τα δεδομένα της βάσης
+      # file system path for the DB data, so it persists across container restarts
       - db_data:/var/lib/postgresql/data
 
   scraper:
     build: ../web_scraper_files
     container_name: thesis-scraper
     depends_on:
-      - db
-    env_file:                                   # Μέσα στο docker network ο host της βάσης είναι db
+      - db                     # in docker network, the scraper will connect to "db" host, not localhost
+    env_file:                                  
       - ../.env 
-    # Προαιρετικό για dev: να βλέπει live τον κώδικα του host
+    # live-editing: changes in local files will reflect in the container
     volumes:
       - ../web_scraper_files:/app
 
   server:
     build:
-      context: ../public     # φάκελος όπου είναι το Dockerfile του server
+      context: ../public     
       dockerfile: Dockerfile
     container_name: thesis-server
     depends_on:
@@ -35,10 +34,39 @@ services:
     env_file:
       - ../.env 
     ports:
-      - "3000:3000"   # host:container → θα τον βλέπεις στο http://localhost:3000
+      - "3000:3000"   # host:container available on http://localhost:3000
     volumes:
-      - ../public:/app    
+      - ../public:/app  
 
+  
+  ranking_service:
+    build: ../ranking_service
+    container_name: thesis-ranking-service
+    depends_on:
+      - db
+    env_file:
+      - ../.env
+      # Expose to host ONLY if you want to test it from your machine.
+      # If only the server container calls it, you can remove ports.
+    ports:
+      - "8008:8008"
+      # Optional for dev hot-editing:
+    volumes:
+      - ../ranking_service:/app
+
+  user_profile_service:
+      build:
+        context: ../user_profile_service
+      container_name: user_profile_service
+      env_file:
+        - ../.env
+      ports:
+        - "8010:8010"
+      depends_on:
+        - db
+      volumes:
+        - ../user_profile_service:/app
+  
 
 volumes:
   db_data:

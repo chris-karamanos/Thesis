@@ -34,13 +34,13 @@ if __name__ == "__main__":
 
     df = read_view(dsn, VIEW_NAME)
 
-    # Required columns 
+    # required columns 
     needed = ["cosine_similarity", "hours_since_publish", "source", "category", "label", "weight"]
     for c in needed:
         if c not in df.columns:
             raise RuntimeError(f"Missing required column '{c}' in {VIEW_NAME}")
 
-    # Type cleaning 
+    # type cleaning 
     df["cosine_similarity"] = pd.to_numeric(df["cosine_similarity"], errors="coerce")
     df["hours_since_publish"] = pd.to_numeric(df["hours_since_publish"], errors="coerce")
     df["label"] = pd.to_numeric(df["label"], errors="coerce")
@@ -49,13 +49,13 @@ if __name__ == "__main__":
     df = df.dropna(subset=["cosine_similarity", "hours_since_publish", "source", "category", "label", "weight"])
     df["label"] = df["label"].astype(int)
 
-    # Features / labels / weights
+    # features / labels / weights
     feature_cols = ["cosine_similarity", "hours_since_publish", "source", "category"]
     X = df[feature_cols]
     y = df["label"].to_numpy()
     w = df["weight"].to_numpy()
 
-    # Preprocess
+    # preprocess
     numeric_features = ["cosine_similarity", "hours_since_publish"]
     categorical_features = ["source", "category"]
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         remainder="drop"
     )
 
-    # Model
+    # model
     clf = LogisticRegression(
         solver="liblinear",
         max_iter=2000,
@@ -80,10 +80,10 @@ if __name__ == "__main__":
     pipe.fit(X, y, clf__sample_weight=w)
     train_secs = time.time() - t0
 
-    # Save model artifact
+    # save model artifact
     joblib.dump(pipe, OUT_MODEL)
 
-    # Save metadata
+    # save metadata
     meta = {
         "view": VIEW_NAME,
         "n_rows": int(len(df)),

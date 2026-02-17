@@ -7,7 +7,7 @@ from html_scraper import scrape_html
 from db_conn import get_db_conn
 
 def _safe_str(x):
-    """Best-effort stringification that tolerates None and non-string types."""
+    # best effort string conversion
     if x is None:
         return ""
     return str(x)
@@ -20,12 +20,11 @@ def _join_categories(val):
     return _safe_str(val)
 
 def save_articles_txt(articles, out_dir="outputs"):
-
-    # Αποθηκευω τα αρθρα σε txt αρχειο 
+    # save the articles in txt 
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     out_path = Path(out_dir) / f"articles.txt"
 
-    # Ταξινομηση πρωτα με source, μετα με published 
+    # sort by source then published
     def _sort_key(a):
         return (_safe_str(a.get("source")).lower(),
                 _safe_str(a.get("published")))

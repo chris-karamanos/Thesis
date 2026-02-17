@@ -1,30 +1,29 @@
+from fastapi import FastAPI, HTTPException
 from typing import Dict, List
 import numpy as np
-from db_conn import get_db_conn  # χρησιμοποιώ την ίδια σύνδεση με register_vector
+import psycopg
+from ast import literal_eval
 
-# βάρη για τα interaction types
+
+MIN_SIGNALS = 10
+
 INTERACTION_WEIGHTS: Dict[str, float] = {
     "click": 0.5,
     "like": 1.0,
     "dislike": -1.0,
 }
 
-
-def fetch_user_ids_with_interactions(conn) -> List[int]:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT DISTINCT user_id
-            FROM interactions
-            """
-        )
-        return [row[0] for row in cur.fetchall()]
-
+def get_db_conn():
+    import os
+    dsn = os.environ["NEWS_DB_DSN_DOCKER"]
+    if(not dsn):
+        raise KeyError("NEWS_DB_DSN_DOCKER")
+    return psycopg.connect(dsn)
 
 def fetch_user_interactions_with_embeddings(conn, user_id: int):
     """
-    Επιστρέφει λίστα από (embedding, weight) για έναν χρήστη.
-    Κάνει join interactions -> articles για να πάρει τα article embeddings.
+    Fetches the most recent interaction for each article the user has interacted with in the last 21 days, along with the article's embedding.
+    Interactions are weighted by type (like > click > dislike). Only articles with embeddings are considered.
     """
     with conn.cursor() as cur:
         cur.execute(
@@ -59,56 +58,48 @@ def fetch_user_interactions_with_embeddings(conn, user_id: int):
     weights: List[float] = []
 
     for emb, interaction_type in rows:
-        # emb έρχεται ως list[float] από τον pgvector adapter → το κάνουμε np.array
         if emb is None:
             continue
-
+        if isinstance(emb, str):
+            emb = literal_eval(emb)
         w = INTERACTION_WEIGHTS.get(interaction_type, 0.0)
         if w == 0.0:
-            continue  # αγνοώ άγνωστους τύπους
-
+            continue
         vectors.append(np.array(emb, dtype=np.float32))
         weights.append(w)
 
     return vectors, weights
 
-
-def compute_user_embedding(vectors: List[np.ndarray], weights: List[float]) -> np.ndarray | None:
+def compute_user_embedding(vectors: List[np.ndarray], weights: List[float]):
     """
-    Υπολογίζει τον σταθμισμένο μέσο όρο των article embeddings για έναν χρήστη.
-    Αν δεν υπάρχουν έγκυρα vectors/weights, επιστρέφει None.
+    Computes a user embedding as a weighted average of article embeddings, where weights are determined by interaction type.
     """
     if not vectors:
         return None
 
     w = np.array(weights, dtype=np.float32)
-        
-    NEG_CAP = -3.0                  # cap συνολικού αρνητικού βάρους
+
+    NEG_CAP = -3.0
     neg_sum = w[w < 0].sum()
-
     if neg_sum < NEG_CAP:
-        scale = NEG_CAP / neg_sum   # neg_sum είναι αρνητικό
+        scale = NEG_CAP / neg_sum
         w[w < 0] *= scale
-    V = np.stack(vectors, axis=0)  # shape (N, 384)
 
-    # weighted sum
+    V = np.stack(vectors, axis=0)
     weighted_sum = (V * w[:, None]).sum(axis=0)
     total_weight = np.abs(w).sum()
-
     if total_weight == 0:
         return None
 
     user_vec = weighted_sum / total_weight
 
-    # optional: L2-normalize για συμβατότητα με cosine similarity
     norm = np.linalg.norm(user_vec)
     if norm > 0:
         user_vec = user_vec / norm
 
     return user_vec
 
-
-def save_user_embedding(conn, user_id: int, embedding: np.ndarray | None):
+def save_user_embedding(conn, user_id: int, embedding):
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -120,20 +111,35 @@ def save_user_embedding(conn, user_id: int, embedding: np.ndarray | None):
         )
     conn.commit()
 
+app = FastAPI()
 
-if __name__ == "__main__":
-    conn = get_db_conn()
+@app.post("/users/{user_id}/recompute")
+def recompute(user_id: int):
+    try:
+        conn = get_db_conn()
+        vectors, weights = fetch_user_interactions_with_embeddings(conn, user_id)
 
-    user_ids = fetch_user_ids_with_interactions(conn)
-    print(f"Found {len(user_ids)} users with interactions")
-
-    for uid in user_ids:
-        vectors, weights = fetch_user_interactions_with_embeddings(conn, uid)
+        if len(vectors) < MIN_SIGNALS:
+            save_user_embedding(conn, user_id, None)
+            conn.close()
+            return {
+                "user_id": user_id,
+                "updated": False,
+                "cold_start": True,
+                "n_signals": len(vectors),
+            }
+        
         user_emb = compute_user_embedding(vectors, weights)
+        save_user_embedding(conn, user_id, user_emb)
+        conn.close()
 
-        if user_emb is None:
-            print(f"User {uid}: no valid interactions/embeddings, skipping")
-            continue
-
-        save_user_embedding(conn, uid, user_emb)
-        print(f"User {uid}: embedding updated")
+        return {
+            "user_id": user_id,
+            "updated": True,
+            "cold_start": False,
+            "n_signals": len(vectors),
+        }
+    except KeyError as e:
+        raise HTTPException(status_code=500, detail=f"Missing env var: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
