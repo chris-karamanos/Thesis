@@ -67,9 +67,7 @@ function buildExplainHTML(it) {
     ? relPos.slice(0, 3).map((r) => `<li>${safeText(r.text)}</li>`).join("")
     : `<li>Μη διαθέσιμη επεξήγηση ομοιότητας.</li>`;
 
-  const negBullets = relNeg.length
-    ? relNeg.slice(0, 1).map((r) => `<li>${safeText(r.text)}</li>`).join("")
-    : "";
+  const negText = relNeg.length ? safeText(relNeg[0].text) : "";
 
   // diversity bullets
   const msg = div?.message ? safeText(div.message) : "Μη διαθέσιμη επεξήγηση ποικιλίας.";
@@ -92,7 +90,13 @@ function buildExplainHTML(it) {
       <div class="explain-title">Επεξήγηση Ομοιότητας</div>
       <ul class="explain-list">
         ${relBullets}
-        ${negBullets ? `<li class="explain-muted">Πιθανό μειονέκτημα:</li>${negBullets}` : ""}
+        ${negText
+          ? `<li class="explain-neg">
+              <span class="explain-neg-title">Πιθανό μειονέκτημα:</span>
+              <span class="explain-sub">${negText}</span>
+            </li>`
+          : ""
+        }
       </ul>
     </div>
 

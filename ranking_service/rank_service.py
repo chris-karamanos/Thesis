@@ -418,7 +418,7 @@ def mmr_rerank(
 
 
 
-def explain_relevance(feature_row: Dict[str, Any], top_k: int = 3) -> Dict[str, Any]:
+def explain_relevance(feature_row: Dict[str, Any], age_seconds: Optional[float] = None, top_k: int = 3) -> Dict[str, Any]:
     """
     Returns per-item LR explanation based on log-odds contributions.
     """
@@ -451,13 +451,16 @@ def explain_relevance(feature_row: Dict[str, Any], top_k: int = 3) -> Dict[str, 
     top_pos = [i for i in idx_sorted_pos if contrib[i] > 0][:top_k]
 
     idx_sorted_neg = np.argsort(contrib)
-    top_neg = [i for i in idx_sorted_neg if contrib[i] < 0][:min(2, top_k)]
+    raw_neg = [i for i in idx_sorted_neg if contrib[i] < 0]
 
-    def _humanize(fname: str, val: float) -> str:
+    OLD_THRESHOLD_SEC = 3 * 24 * 3600  # 3 days
+    is_old = (age_seconds is not None) and (float(age_seconds) > OLD_THRESHOLD_SEC)    
+
+    def _humanize_pos(fname: str) -> str:
         if "cosine_similarity" in fname:
             return f"Υψηλή σημασιολογική ομοιότητα με το προφίλ σας"
         if "hours_since_publish" in fname:
-            return f"Παλιό άρθρο"
+            return f"Πρόσφατο άρθρο"
         if "cat__source_" in fname:
             s = fname.split("cat__source_", 1)[1]
             return f"Προτίμηση πηγής: {s}"
@@ -465,16 +468,39 @@ def explain_relevance(feature_row: Dict[str, Any], top_k: int = 3) -> Dict[str, 
             c = fname.split("cat__category_", 1)[1]
             return f"Προτίμηση κατηγορίας: {c}"
         return fname
+    
+    def _humanize_neg(fname: str) -> Optional[str]:
+        if "cosine_similarity" in fname:
+            return "Χαμηλή σημασιολογική ομοιότητα με το προφίλ σας"
+        if "hours_since_publish" in fname:
+            return "Παλιό άρθρο" if is_old else None  
+        if "cat__source_" in fname:
+            s = fname.split("cat__source_", 1)[1]
+            return f"Μειωμένο ενδιαφέρον για την πηγή: {s}"
+        if "cat__category_" in fname:
+            c = fname.split("cat__category_", 1)[1]
+            return f"Μειωμένο ενδιαφέρον για την κατηγορία: {c}"
+        return fname
 
-    reasons_pos = [{"feature": names[i], "contribution": float(contrib[i]), "text": _humanize(names[i], contrib[i])}
-                   for i in top_pos]
-    reasons_neg = [{"feature": names[i], "contribution": float(contrib[i]), "text": _humanize(names[i], contrib[i])}
-                   for i in top_neg]
+    reasons_pos = [
+        {"feature": names[i], "contribution": float(contrib[i]), "text": _humanize_pos(names[i])}
+        for i in top_pos
+    ]
+    reasons_neg = []
+    for i in raw_neg:
+        text = _humanize_neg(names[i])
+        if text is None:
+            continue
+        reasons_neg.append({"feature": names[i], "contribution": float(contrib[i]), "text": text})
+        if len(reasons_neg) >= min(2, top_k):
+            break
 
     return {
         "intercept": intercept,
         "top_positive": reasons_pos,
         "top_negative": reasons_neg,
+        "age_seconds": None if age_seconds is None else float(age_seconds),
+        "old_threshold_seconds": float(OLD_THRESHOLD_SEC),
     }
 
 
@@ -530,7 +556,7 @@ def rerank(req: RerankRequest) -> RerankResponse:
                 category=cand.category,
                 language=cand.language,
                 title=cand.title,
-                explain_relevance=explain_relevance(feature_rows[i], top_k=3),
+                explain_relevance=explain_relevance(feature_rows[i], age_seconds=req.candidates[i].age_seconds, top_k=3),
                 explain_diversity=selected_debug[rank-1],
             )
         )
